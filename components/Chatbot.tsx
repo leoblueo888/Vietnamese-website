@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI } from '@google/generai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const Chatbot: React.FC = () => {
     const [currentLang, setCurrentLang] = useState<'en' | 'ru'>(() => (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en');
@@ -114,8 +114,8 @@ export const Chatbot: React.FC = () => {
         setIsLoadingAI(true);
 
         try {
-            const genAI = new GoogleGenAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Để tạm 1.5 cho ổn định, ông sửa lại 2.5 tùy ý
+            const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             const result = await model.generateContent(trimmedMessage);
             const response = await result.response;
@@ -166,7 +166,7 @@ export const Chatbot: React.FC = () => {
                 .animate-float { animation: float 4s ease-in-out infinite; }
             `}</style>
             <button onClick={toggleChat} className="fixed bottom-6 right-6 z-50 animate-float bg-white p-3 rounded-full shadow-xl border border-blue-100">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocL" alt="Trang" className="w-12 h-12 rounded-full" />
+                <img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" alt="Trang" className="w-12 h-12 rounded-full" />
             </button>
 
             {isOpen && (
