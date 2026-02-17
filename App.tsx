@@ -31,12 +31,12 @@ export type AuthMode = 'signin' | 'signup';
 
 const SCRIPT_URL_CREDIT = 'https://script.google.com/macros/s/AKfycbzfPwTDzc5SJoftFcYo6OZk8w-GvLcF2EpFvPQk3HoYn-VU3Ey5Les6UC0EPfWqxv3c/exec';
 
-// --- WHITELIST: Guest được phép vào các bài này ---
+// --- WHITELIST: Guest luôn được vào các mục này ---
 const OPEN_LESSON_IDS = [
-  'GameTetWishes', 'Vietnameseverb2',        // Vocabulary
-  'GrammarASA', 'ASA', 'GrammarAQA', 'AQA',   // Grammar (Mở cả Level và Game bên trong)
-  'GameSpeakingMeetingFriends', 'GameSpeakAISmoothie', // Speaking
-  'Pronunciationtrainer1'                    // Pronunciation
+  'GameTetWishes', 'Vietnameseverb2',        
+  'GrammarASA', 'ASA', 'GrammarAQA', 'AQA',   
+  'GameSpeakingMeetingFriends', 'GameSpeakAISmoothie', 
+  'Pronunciationtrainer1'                    
 ];
 
 const CreditModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignUp: () => void; isGuest: boolean; }> = ({ isOpen, onClose, onSignUp, isGuest }) => {
@@ -88,7 +88,6 @@ const App: React.FC = () => {
   const [selectedAITopic, setSelectedAITopic] = useState<string | null>(null);
   const [scrollToAnchor, setScrollToAnchor] = useState<string | null>(null);
   const [user, setUser] = useState<{name: string} | null>(null);
-
   const [credit, setCredit] = useState<number>(300);
   const [isGuest, setIsGuest] = useState(true);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
@@ -163,32 +162,32 @@ const App: React.FC = () => {
 
   const handleOpenAuthModal = (mode: AuthMode) => { setAuthModal({ isOpen: true, mode }); };
   const handleCloseAuthModal = () => { setAuthModal({ isOpen: false, mode: 'signin' }); };
+  const handleSwitchAuthMode = (newMode: AuthMode) => { setAuthModal({ isOpen: true, mode: newMode }); };
 
-  // --- HÀM ĐIỀU HƯỚNG THÔNG MINH (FIX LỖI CHẶN GUEST) ---
+  // --- HÀM ĐIỀU HƯỚNG MỚI (FIX TRIỆT ĐỂ) ---
   const navigateTo = (newView: ViewType, data?: any) => {
+    const targetId = data?.id || (typeof data === 'string' ? data : null);
+    
+    // 1. Kiểm tra Whitelist ngay lập tức
+    const isAllowed = OPEN_LESSON_IDS.some(id => 
+      targetId === id || 
+      (targetId && id.toString().includes(id)) || 
+      (targetId && id.toString().includes(targetId))
+    );
+
+    // 2. Chỉ hiện Modal nếu là Guest, view bị bảo vệ VÀ không nằm trong Whitelist
     const protectedViews: ViewType[] = [
       'grammar-level', 'lesson', 'speaking-lesson', 'pronunciation-lesson', 
       'vocabulary-lesson', 'speaking-challenge-game', 'make-question-game', 
       'ai-friends', 'ai-friend-detail', 'real-life-speaking-game', 'real-life-ai-chat'
     ];
 
-    // Lấy ID tiềm năng từ data (chuỗi hoặc object)
-    const targetId = data?.id || (typeof data === 'string' ? data : null);
-
-    if (isGuest && protectedViews.includes(newView)) {
-      // KIỂM TRA WHITELIST: Chỉ cần targetId khớp một phần với OPEN_LESSON_IDS
-      const isAllowed = OPEN_LESSON_IDS.some(id => 
-        targetId === id || 
-        (targetId && id.includes(targetId)) || 
-        (targetId && targetId.includes(id))
-      );
-
-      if (!isAllowed) {
-        handleOpenAuthModal('signup');
-        return;
-      }
+    if (isGuest && protectedViews.includes(newView) && !isAllowed) {
+      handleOpenAuthModal('signup');
+      return;
     }
 
+    // 3. Thực hiện chuyển view
     const premiumViews: ViewType[] = ['ai-friend-detail', 'real-life-ai-chat'];
     if (premiumViews.includes(view) && !premiumViews.includes(newView)) syncCreditToBackend();
 
