@@ -1,12 +1,15 @@
-<!DOCTYPE html>
-<html lang="vi">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Truly Easy Vietnamese</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App'; 
+
+// Đoạn code này sẽ tìm cái thẻ <div id="root"> trong file HTML của ông 
+// và đổ toàn bộ giao diện học tiếng Việt vào đó.
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
