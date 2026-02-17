@@ -70,8 +70,7 @@ const TopicCard: React.FC<{ topic: Topic; onSelect: () => void }> = ({ topic, on
           alt={topic.name} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-xl ${topic.overlayColor} backdrop-blur-[2px] border border-white/50 shadow-sm`}>
-           <span className="text-slate-800 font-black text-center block text-sm tracking-tight whitespace-nowrap">
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-xl ${topic.overlayColor} backdrop-blur-[2px] border border-white/50 shadow-sm`}><br>           <span className="text-slate-800 font-black text-center block text-sm tracking-tight whitespace-nowrap">
              {topic.name}
            </span>
         </div>
@@ -165,8 +164,8 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
   const grammarLevels = getGrammarLevels(language);
   const currentLevel = grammarLevels.find(l => l.badge === focusedLevel);
 
-  // --- THAY ĐỔI: Danh sách mở khóa sẽ được điều khiển bởi OPEN_LESSON_IDS ở App.tsx ---
-  const freeLevelsForGuest = ['ASA']; // Chỉ hiện level mở sẵn, các level khác sẽ tự hiện Lock
+  // Danh sách mở khóa sẽ được điều khiển bởi OPEN_LESSON_IDS ở App.tsx
+  const freeLevelsForGuest = ['ASA', 'AQA']; 
 
   return (
     <div className="pt-24 md:pt-32 pb-32 bg-white min-h-screen">
@@ -200,7 +199,7 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
           <div className="mb-20 max-w-5xl mx-auto">
               <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-100">
                   <img 
-                      src={language === 'ru' ? 'https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200' : 'https://lh3.googleusercontent.com/d/10cqEIBGmt-dZ53668g1NHQrIWsdUkxjF'} 
+                      src={language === 'ru' ? 'https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200' : 'https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200'} 
                       alt="Grammar learning banner" 
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -210,26 +209,22 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {grammarLevels.map((level) => {
-              // --- THAY ĐỔI: Phá bỏ logic tự chặn, chỉ giữ lại UI Lock nếu muốn ---
               const isLockedUI = isGuest && !freeLevelsForGuest.includes(level.badge);
               
               return (
                  <div 
                   key={level.badge} 
                   className="relative"
-                  onClick={() => onSelectLevel(level.badge)} // Cứ cho bấm, App.tsx sẽ chặn nếu bài đó không nằm trong Whitelist
+                  onClick={() => onSelectLevel(level.badge)} 
                 >
                   <GrammarCard 
                     level={level} 
-                    onClick={() => {}} // onClick đã được xử lý ở div cha
+                    onClick={() => {}} 
                     lang={language}
                   />
                   {isLockedUI && (
-                    <div className="absolute inset-0 bg-slate-50/40 backdrop-blur-[1px] rounded-[2.5rem] pointer-events-none flex flex-col items-center justify-center text-center p-4">
-                      {/* Chỉ hiện biểu tượng khóa mờ để báo hiệu bài này cần Premium, nhưng không chặn event click */}
-                      <div className="bg-white/80 p-3 rounded-full shadow-lg">
-                        <Lock size={24} className="text-slate-400" />
-                      </div>
+                    <div className="absolute top-6 right-6 bg-white/90 p-3 rounded-full shadow-lg pointer-events-none z-10">
+                        <Lock size={20} className="text-slate-400" />
                     </div>
                   )}
                 </div>
