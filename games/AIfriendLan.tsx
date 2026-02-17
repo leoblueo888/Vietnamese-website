@@ -145,3 +145,81 @@ export const AIfriendLan: React.FC = () => {
             
             const content = text.split('|')[0].trim();
             const trans = text.split('|')[1] ? text.split('|')[1].trim() : '';
+            const correction = text.split('USER_TRANSLATION:')[1] || '';
+
+            div.innerHTML = \`
+                <div class="bubble \${role === 'user' ? 'bg-sky-600 text-white rounded-2xl rounded-tr-none' : 'bg-white border border-slate-100 rounded-2xl rounded-tl-none shadow-sm'} p-4">
+                    <div class="flex justify-between items-start gap-4">
+                        <span class="font-bold">\${content}</span>
+                        \${role === 'ai' ? '<button onclick="speak(\\''+content.replace(/'/g, "\\\\'")+'\\')" class="text-sky-400 hover:text-sky-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M11 5L6 9H2v6h4l5 4V5z"></path></svg></button>' : ''}
+                    </div>
+                    \${trans ? '<div class="text-[11px] mt-2 pt-2 border-t border-black/10 opacity-70 italic font-medium">' + trans + '</div>' : ''}
+                    \${correction ? '<div class="text-[9px] mt-2 text-sky-200 font-black uppercase">Correct: ' + correction.replace(/[\\[\\]]/g,'') + '</div>' : ''}
+                </div>
+            \`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function startChat() {
+            document.getElementById('start-screen').style.display = 'none';
+            const welcome = "Dạ em chào Anh/Chị! Em là Lan. Rất vui được làm quen với mình ạ! | Hello! I'm Lan. Nice to meet you!";
+            addMessage('ai', welcome);
+            speak(welcome);
+        }
+
+        function send() {
+            const input = document.getElementById('input');
+            const val = input.value.trim();
+            if(!val || isThinking) return;
+
+            addMessage('user', val);
+            history.push({role: 'user', text: val});
+            input.value = '';
+            isThinking = true;
+            document.getElementById('typing').classList.remove('hidden');
+            document.getElementById('status-text').innerText = 'LAN IS TYPING...';
+
+            window.parent.postMessage({ type: 'SEND_TO_GEMINI', history: history }, '*');
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'GEMINI_RESPONSE') {
+                isThinking = false;
+                document.getElementById('typing').classList.add('hidden');
+                document.getElementById('status-text').innerText = 'ONLINE';
+                const text = event.data.text;
+                addMessage('ai', text);
+                history.push({role: 'ai', text: text});
+                speak(text);
+            }
+        });
+
+        document.getElementById('input').addEventListener('keypress', (e) => { if(e.key === 'Enter') send(); });
+    </script>
+</body>
+</html>
+  `;
+
+  return (
+    <div className="w-full h-full bg-slate-900 flex flex-col">
+       <div className="flex justify-between items-center p-2 px-4 bg-slate-800">
+          <button onClick={() => window.location.reload()} className="text-[10px] font-black text-slate-400 hover:text-white transition-all tracking-widest">← EXIT TO MENU</button>
+          <div className="flex gap-2 text-[10px] font-black text-sky-500 italic">
+             <span>GEMINI 1.5 FLASH</span>
+             <span className="text-slate-600">|</span>
+             <span>GOOGLE TTS ACTIVE</span>
+          </div>
+       </div>
+       <iframe
+        ref={iframeRef}
+        className="w-full flex-1 border-none bg-white"
+        srcDoc={gameHTML}
+        title="AI Friend Lan"
+        sandbox="allow-scripts allow-same-origin"
+      />
+    </div>
+  );
+};
+
+export default AIfriendLan;
