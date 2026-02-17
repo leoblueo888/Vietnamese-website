@@ -73,19 +73,10 @@ let isThinking = false;
 let speed = 1.0;
 
 /* =========================
-   🔥 AUDIO FIX START
+   🔥 AUDIO FIX - TẠO AUDIO OBJECT SỚM
 ========================= */
 
 let currentAudio = null;
-let audioUnlocked = false;
-
-function unlockAudio() {
-  if (!audioUnlocked) {
-    const silent = new Audio();
-    silent.play().catch(()=>{});
-    audioUnlocked = true;
-  }
-}
 
 function speak(text) {
   const clean = text.split('|')[0].trim();
@@ -93,12 +84,15 @@ function speak(text) {
     + encodeURIComponent(clean) + 
     "&tl=vi&client=tw-ob";
 
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio.currentTime = 0;
+  // ✅ Nếu chưa có Audio object, tạo mới
+  if (!currentAudio) {
+    currentAudio = new Audio();
   }
 
-  currentAudio = new Audio(url);
+  // ✅ Chỉ thay đổi src, không tạo Audio mới
+  currentAudio.pause();
+  currentAudio.currentTime = 0;
+  currentAudio.src = url;
   currentAudio.playbackRate = speed;
 
   currentAudio.play().catch(e => {
@@ -120,7 +114,9 @@ function addMessage(role, text) {
 }
 
 function startChat() {
-  unlockAudio(); // 🔥 FIX
+  // 🔥 TẠO AUDIO OBJECT NGAY KHI USER CLICK START
+  currentAudio = new Audio();
+  
   document.getElementById('start-screen').style.display = 'none';
   const welcome = "Dạ em chào Anh/Chị! Em là Lan. Rất vui được làm quen với mình ạ! | Hello!";
   addMessage('ai', welcome);
@@ -128,8 +124,6 @@ function startChat() {
 }
 
 function send() {
-  unlockAudio(); // 🔥 FIX
-
   const input = document.getElementById('input');
   const val = input.value.trim();
   if(!val || isThinking) return;
@@ -170,7 +164,8 @@ document.getElementById('input').addEventListener('keypress', (e)=>{
         className="w-full flex-1 border-none bg-white"
         srcDoc={gameHTML}
         title="AI Friend Lan"
-        sandbox="allow-scripts allow-same-origin allow-autoplay"  // 🔥 FIX QUAN TRỌNG
+        sandbox="allow-scripts allow-same-origin allow-autoplay"
+        allow="autoplay"
       />
     </div>
   );
