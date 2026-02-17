@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -33,6 +30,14 @@ export type Language = 'en' | 'ru';
 export type AuthMode = 'signin' | 'signup';
 
 const SCRIPT_URL_CREDIT = 'https://script.google.com/macros/s/AKfycbzfPwTDzc5SJoftFcYo6OZk8w-GvLcF2EpFvPQk3HoYn-VU3Ey5Les6UC0EPfWqxv3c/exec';
+
+// --- DANH SÁCH BÀI HỌC MỞ CHO GUEST (WHITELIST) ---
+const OPEN_LESSON_IDS = [
+  'GameTetWishes', 'Vietnameseverb2',        // Vocabulary
+  'GrammarASA',                              // Grammar
+  'GameSpeakingMeetingFriends', 'GameSpeakAISmoothie', // Speaking
+  'Pronunciationtrainer1'                    // Pronunciation
+];
 
 const CreditModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignUp: () => void; isGuest: boolean; }> = ({ isOpen, onClose, onSignUp, isGuest }) => {
   const [copied, setCopied] = useState(false);
@@ -87,7 +92,6 @@ const App: React.FC = () => {
   const [scrollToAnchor, setScrollToAnchor] = useState<string | null>(null);
   const [user, setUser] = useState<{name: string} | null>(null);
 
-  // Credit System State
   const [credit, setCredit] = useState<number>(300);
   const [isGuest, setIsGuest] = useState(true);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
@@ -136,7 +140,7 @@ const App: React.FC = () => {
     initializeState();
     window.addEventListener('authSuccess', initializeState);
     const handleLogout = () => {
-        syncCreditToBackend(); // Sync one last time before logging out
+        syncCreditToBackend();
         localStorage.removeItem('user');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('user_credit');
@@ -181,24 +185,25 @@ const App: React.FC = () => {
   const handleCloseAuthModal = () => { setAuthModal({ isOpen: false, mode: 'signin' }); };
   const handleSwitchAuthMode = (newMode: AuthMode) => { setAuthModal({ isOpen: true, mode: newMode }); };
 
+  // --- HÀM ĐIỀU HƯỚNG CẬP NHẬT (FIX LỖI BLOCKED GUEST) ---
   const navigateTo = (newView: ViewType, data?: any) => {
     const protectedViews: ViewType[] = [
-      'grammar-level', 
-      'lesson', 
-      'speaking-lesson', 
-      'pronunciation-lesson', 
-      'vocabulary-lesson', 
-      'speaking-challenge-game', 
-      'make-question-game', 
-      'ai-friends', 
-      'ai-friend-detail', 
-      'real-life-speaking-game', 
-      'real-life-ai-chat'
+      'grammar-level', 'lesson', 'speaking-lesson', 'pronunciation-lesson', 
+      'vocabulary-lesson', 'speaking-challenge-game', 'make-question-game', 
+      'ai-friends', 'ai-friend-detail', 'real-life-speaking-game', 'real-life-ai-chat'
     ];
 
+    // Lấy ID bài học/game từ payload
+    const targetId = data?.id || (typeof data === 'string' ? data : null);
+
     if (isGuest && protectedViews.includes(newView)) {
-      handleOpenAuthModal('signup');
-      return;
+      // Kiểm tra xem ID có nằm trong Whitelist bài mở không
+      const isFreeLesson = OPEN_LESSON_IDS.some(id => targetId?.includes(id) || id === targetId);
+
+      if (!isFreeLesson) {
+        handleOpenAuthModal('signup');
+        return;
+      }
     }
 
     const premiumViews: ViewType[] = ['ai-friend-detail', 'real-life-ai-chat'];
@@ -271,7 +276,6 @@ const App: React.FC = () => {
       case 'real-life-ai-chat':
         return selectedSpeakingUnit && selectedAIFriend && <RealLifeAIChatPage unit={selectedSpeakingUnit} character={selectedAIFriend} onBack={() => navigateTo('speaking-lesson', selectedSpeakingUnit)} language={language} {...aiProps} />;
 
-      // Other cases...
       case 'grammar': return <GrammarPage language={language} focusedLevel={null} onNavigateBack={resetToHome} onSelectLevel={(level) => navigateTo('grammar-level', level)} onSelectTopic={(topic) => navigateTo('lesson', topic)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
       case 'grammar-level': return selectedLevel && <GrammarPage language={language} focusedLevel={selectedLevel} onNavigateBack={() => navigateTo('grammar')} onSelectLevel={(level) => navigateTo('grammar-level', level)} onSelectTopic={(topic) => navigateTo('lesson', topic)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
       case 'vocabulary': return <VocabularyPage language={language} onBack={resetToHome} onSelectUnit={(unit) => navigateTo('vocabulary-lesson', unit)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
