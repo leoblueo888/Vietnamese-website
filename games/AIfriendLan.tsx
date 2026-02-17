@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge } from 'lucide-react';
 import { generateContentWithRetry } from '../config/apiKeys';
@@ -125,105 +126,13 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const [speechSpeed, setSpeechSpeed] = useState(1.0); 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
   const LAN_IMAGE_URL = "https://lh3.googleusercontent.com/d/13mqljSIRC9hvO-snymkzuUiV4Fypqcft";
   const t = getTranslations(topic)[selectedLang as 'EN' | 'RU'];
-  
-  // KHỞI TẠO AUDIO - SỬA LẠI
-  useEffect(() => {
-    audioRef.current = new Audio();
-    audioRef.current.preload = 'auto';
-    
-    // Preload silent audio để kích hoạt audio context
-    const initAudio = async () => {
-      try {
-        const silentUrl = 'data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzAAAAAAAAAAAAAAA=';
-        const silentAudio = new Audio();
-        silentAudio.src = silentUrl;
-        await silentAudio.play().catch(() => {});
-        console.log('Audio system ready');
-      } catch (e) {
-        console.log('Audio will be activated on user interaction');
-      }
-    };
-    
-    initAudio();
-    
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, []);
-
-  // HÀM SPEAK WORD - SỬA LẠI HOÀN TOÀN
-  const speakWord = async (text: string, msgId: any = null) => {
-    if (!text) return;
-    if (msgId) setActiveVoiceId(msgId);
-    
-    try {
-      const parts = text.split('|');
-      const cleanText = parts[0].replace(/USER_TRANSLATION:.*$/gi, '').replace(/["'*]/g, '').trim();
-      
-      // Tách thành segments
-      const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
-        if (idx % 2 === 0) {
-          const nextPunct = arr[idx + 1] || "";
-          const combined = (current + nextPunct).trim();
-          if (combined) acc.push(combined);
-        }
-        return acc;
-      }, []);
-
-      const finalSegments = segments.length > 0 ? segments : [cleanText];
-
-      for (const segment of finalSegments) {
-        if (!segment.trim()) continue;
-        
-        // Tạo audio mới cho mỗi segment
-        const audio = new Audio();
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-        
-        audio.src = url;
-        audio.playbackRate = speechSpeed;
-        
-        await new Promise<void>((resolve) => {
-          audio.onended = () => {
-            audio.remove();
-            resolve();
-          };
-          audio.onerror = () => {
-            audio.remove();
-            resolve();
-          };
-          
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(e => {
-              console.log('Browser prevented autoplay:', e);
-              // Thử play lại khi user click
-              const playOnClick = () => {
-                audio.play().catch(() => {});
-                document.removeEventListener('click', playOnClick);
-              };
-              document.addEventListener('click', playOnClick, { once: true });
-              audio.remove();
-              resolve();
-            });
-          }
-        });
-      }
-    } catch (e) { 
-      console.error(e); 
-    } finally { 
-      if (msgId) setActiveVoiceId(null); 
-    }
-  };
   
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
@@ -306,7 +215,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
 
     return () => {
         const duration = Math.round((performance.now() - startTime) / 1000);
-        if (duration > 5) {
+        if (duration > 5) { // Only log if user spent meaningful time
             const userString = localStorage.getItem('user');
             const user = userString ? JSON.parse(userString) : { name: 'Guest' };
             
@@ -369,6 +278,34 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     });
   };
 
+  const speakWord = async (text: string, msgId: any = null) => {
+    if (!text) return;
+    if (msgId) setActiveVoiceId(msgId);
+    const parts = text.split('|');
+    const cleanText = parts[0].replace(/USER_TRANSLATION:.*$/gi, '').replace(/["'*]/g, '').trim();
+    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
+      if (idx % 2 === 0) {
+        const nextPunct = arr[idx + 1] || "";
+        const combined = (current + nextPunct).trim();
+        if (combined) acc.push(combined);
+      }
+      return acc;
+    }, []);
+
+    try {
+      for (const segment of segments) {
+        await new Promise<void>((resolve) => {
+          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
+          audioRef.current.src = url;
+          audioRef.current.playbackRate = speechSpeed; 
+          audioRef.current.onended = () => resolve();
+          audioRef.current.onerror = () => resolve();
+          audioRef.current.play().catch(() => resolve());
+        });
+      }
+    } catch (e) { console.error(e); } finally { if (msgId) setActiveVoiceId(null); }
+  };
+  
   const toggleRecording = () => {
     if (!recognitionRef.current) return;
     if (isRecording) {
@@ -380,20 +317,10 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     }
   };
   
-  // HÀM START GAME - THÊM SILENT AUDIO
   const handleStartGame = () => {
-    // Play silent audio để kích hoạt audio context
-    const silentAudio = new Audio();
-    silentAudio.src = 'data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzAAAAAAAAAAAAAAA=';
-    silentAudio.play().catch(() => {});
-    
     setMessages([{ role: 'ai', text: t.welcome_msg, displayedText: t.welcome_msg, id: 'init' }]); 
     setGameState('playing'); 
-    
-    // Delay nhỏ để state update
-    setTimeout(() => {
-      speakWord(t.welcome_msg, 'init');
-    }, 200);
+    speakWord(t.welcome_msg, 'init');
   };
   
   const downloadConversation = () => {
@@ -413,15 +340,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   
   const renderInteractiveText = (text: string) => {
       return text; 
-  };
-
-  // Play all messages
-  const playAllMessages = async () => {
-    const aiMessages = messages.filter(m => m.role === 'ai');
-    for (const msg of aiMessages) {
-      await speakWord(msg.text, msg.id);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
   };
 
   if (gameState === 'start') {
@@ -481,9 +399,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
               <button onClick={cycleSpeechSpeed} className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">
                   <Gauge size={12} /> <span>{Math.round(speechSpeed * 100)}%</span>
               </button>
-              <button onClick={playAllMessages} className="flex items-center gap-1 bg-sky-100 text-sky-600 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-sky-200 transition-colors">
-                  <PlayCircle size={12} /> ALL
-              </button>
               <button onClick={downloadConversation} className="flex items-center gap-1 bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-slate-200 transition-colors">
                   <Download size={12} />
               </button>
@@ -495,24 +410,9 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm md:text-base font-bold flex-1">
-                      {msg.role === 'ai' ? parts[0] : msg.displayedText}
-                    </p>
-                    {msg.role === 'ai' && (
-                      <button
-                        onClick={() => speakWord(msg.text, msg.id)}
-                        className={`shrink-0 p-1.5 rounded-full transition-colors ${
-                          activeVoiceId === msg.id 
-                            ? 'bg-sky-500 text-white animate-pulse' 
-                            : 'bg-slate-100 text-slate-500 hover:bg-sky-100'
-                        }`}
-                        disabled={activeVoiceId === msg.id}
-                      >
-                        <Volume2 size={14} />
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-sm md:text-base font-bold">
+                    {msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.displayedText}
+                  </p>
                   {(msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation) ? (
                     <p className="text-xs italic mt-2 pt-2 border-t border-black/10">
                       {msg.role === 'ai' ? parts[1] : msg.translation}
