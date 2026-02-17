@@ -31,17 +31,16 @@ export type AuthMode = 'signin' | 'signup';
 
 const SCRIPT_URL_CREDIT = 'https://script.google.com/macros/s/AKfycbzfPwTDzc5SJoftFcYo6OZk8w-GvLcF2EpFvPQk3HoYn-VU3Ey5Les6UC0EPfWqxv3c/exec';
 
-// --- DANH SÁCH BÀI HỌC MỞ CHO GUEST (WHITELIST) ---
+// --- WHITELIST: Guest được phép vào các bài này ---
 const OPEN_LESSON_IDS = [
   'GameTetWishes', 'Vietnameseverb2',        // Vocabulary
-  'GrammarASA',                              // Grammar
+  'GrammarASA', 'ASA', 'GrammarAQA', 'AQA',   // Grammar (Mở cả Level và Game bên trong)
   'GameSpeakingMeetingFriends', 'GameSpeakAISmoothie', // Speaking
   'Pronunciationtrainer1'                    // Pronunciation
 ];
 
 const CreditModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignUp: () => void; isGuest: boolean; }> = ({ isOpen, onClose, onSignUp, isGuest }) => {
   const [copied, setCopied] = useState(false);
-
   const handleCopyLink = () => {
     const userEmail = localStorage.getItem('userEmail');
     if (userEmail) {
@@ -51,9 +50,7 @@ const CreditModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignUp: ()
       setTimeout(() => setCopied(false), 2000);
     }
   };
-
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999999] flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center relative shadow-xl border-4 border-yellow-300">
@@ -99,9 +96,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const referrerEmail = urlParams.get('ref');
-    if (referrerEmail) {
-      sessionStorage.setItem('pending_referrer', referrerEmail);
-    }
+    if (referrerEmail) sessionStorage.setItem('pending_referrer', referrerEmail);
   }, []);
 
   const syncCreditToBackend = useCallback(() => {
@@ -127,11 +122,8 @@ const App: React.FC = () => {
         const userCredit = localStorage.getItem('user_credit');
         setCredit(userCredit ? parseInt(userCredit, 10) : 1200);
     } else {
-        let guestCredit = localStorage.getItem('guest_credit');
-        if (guestCredit === null) {
-            guestCredit = '300';
-            localStorage.setItem('guest_credit', guestCredit);
-        }
+        let guestCredit = localStorage.getItem('guest_credit') || '300';
+        localStorage.setItem('guest_credit', guestCredit);
         setCredit(parseInt(guestCredit, 10));
     }
   }, []);
@@ -141,14 +133,11 @@ const App: React.FC = () => {
     window.addEventListener('authSuccess', initializeState);
     const handleLogout = () => {
         syncCreditToBackend();
-        localStorage.removeItem('user');
-        localStorage.removeItem('userEmail');
-        localStorage.removeItem('user_credit');
+        localStorage.clear();
         localStorage.setItem('isLoggedIn', 'false');
         initializeState();
     };
     window.addEventListener('logout', handleLogout);
-
     return () => {
         window.removeEventListener('authSuccess', initializeState);
         window.removeEventListener('logout', handleLogout);
@@ -157,18 +146,14 @@ const App: React.FC = () => {
 
   const handleSetCredit = useCallback((updater: (prevCredit: number) => number) => {
     setCredit(prevCredit => {
-      const newCredit = updater(prevCredit);
-      const sanitizedCredit = Math.max(0, newCredit);
-      const key = isGuest ? 'guest_credit' : 'user_credit';
-      localStorage.setItem(key, String(sanitizedCredit));
-      return sanitizedCredit;
+      const newCredit = Math.max(0, updater(prevCredit));
+      localStorage.setItem(isGuest ? 'guest_credit' : 'user_credit', String(newCredit));
+      return newCredit;
     });
   }, [isGuest]);
 
   useEffect(() => {
-    if (credit <= 0) {
-      setIsCreditModalOpen(true);
-    }
+    if (credit <= 0) setIsCreditModalOpen(true);
   }, [credit]);
 
   useEffect(() => {
@@ -176,16 +161,10 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', syncCreditToBackend);
   }, [syncCreditToBackend]);
 
-  useEffect(() => {
-    localStorage.setItem('app_lang', language);
-    window.dispatchEvent(new Event('languageChanged'));
-  }, [language]);
-
   const handleOpenAuthModal = (mode: AuthMode) => { setAuthModal({ isOpen: true, mode }); };
   const handleCloseAuthModal = () => { setAuthModal({ isOpen: false, mode: 'signin' }); };
-  const handleSwitchAuthMode = (newMode: AuthMode) => { setAuthModal({ isOpen: true, mode: newMode }); };
 
-  // --- HÀM ĐIỀU HƯỚNG CẬP NHẬT (FIX LỖI BLOCKED GUEST) ---
+  // --- HÀM ĐIỀU HƯỚNG THÔNG MINH (FIX LỖI CHẶN GUEST) ---
   const navigateTo = (newView: ViewType, data?: any) => {
     const protectedViews: ViewType[] = [
       'grammar-level', 'lesson', 'speaking-lesson', 'pronunciation-lesson', 
@@ -193,23 +172,25 @@ const App: React.FC = () => {
       'ai-friends', 'ai-friend-detail', 'real-life-speaking-game', 'real-life-ai-chat'
     ];
 
-    // Lấy ID bài học/game từ payload
+    // Lấy ID tiềm năng từ data (chuỗi hoặc object)
     const targetId = data?.id || (typeof data === 'string' ? data : null);
 
     if (isGuest && protectedViews.includes(newView)) {
-      // Kiểm tra xem ID có nằm trong Whitelist bài mở không
-      const isFreeLesson = OPEN_LESSON_IDS.some(id => targetId?.includes(id) || id === targetId);
+      // KIỂM TRA WHITELIST: Chỉ cần targetId khớp một phần với OPEN_LESSON_IDS
+      const isAllowed = OPEN_LESSON_IDS.some(id => 
+        targetId === id || 
+        (targetId && id.includes(targetId)) || 
+        (targetId && targetId.includes(id))
+      );
 
-      if (!isFreeLesson) {
+      if (!isAllowed) {
         handleOpenAuthModal('signup');
         return;
       }
     }
 
     const premiumViews: ViewType[] = ['ai-friend-detail', 'real-life-ai-chat'];
-    if (premiumViews.includes(view) && !premiumViews.includes(newView)) {
-        syncCreditToBackend();
-    }
+    if (premiumViews.includes(view) && !premiumViews.includes(newView)) syncCreditToBackend();
 
     setScrollToAnchor(null);
     let payload = data;
@@ -228,9 +209,7 @@ const App: React.FC = () => {
         setSelectedAIFriend(payload.character || payload);
         setSelectedAITopic(payload.topic || null);
     }
-    if (['speaking-challenge-game', 'make-question-game', 'real-life-speaking-game'].includes(newView)) {
-        setSelectedSpeakingUnit(payload);
-    }
+    if (['speaking-challenge-game', 'make-question-game', 'real-life-speaking-game'].includes(newView)) setSelectedSpeakingUnit(payload);
     if (newView === 'real-life-ai-chat') {
         setSelectedSpeakingUnit(payload.unit);
         setSelectedAIFriend(payload.character);
@@ -269,13 +248,10 @@ const App: React.FC = () => {
         if (selectedSpeakingUnit?.id === 'realLifeSituations') return <RealLifeSituationsPage onBack={() => navigateTo('speaking')} onNavigate={navigateTo} language={language} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
         if (realLifeSubUnitIds.includes(selectedSpeakingUnit?.id || '')) return <RealLifeSubLessonPage unit={selectedSpeakingUnit!} onBack={() => navigateTo('speaking-lesson', { id: 'realLifeSituations' })} onNavigate={navigateTo} language={language} />;
         return selectedSpeakingUnit && <SpeakingLessonPage unit={selectedSpeakingUnit} onBack={() => navigateTo('speaking')} onNavigate={navigateTo} scrollToAnchor={scrollToAnchor} onAnchorScrolled={() => setScrollToAnchor(null)} language={language} />;
-      
       case 'ai-friend-detail':
         return selectedAIFriend && <GameAIFriendDetail character={selectedAIFriend} topic={selectedAITopic} onBack={() => navigateTo('ai-friends')} onNavigate={navigateTo} language={language} {...aiProps} />;
-      
       case 'real-life-ai-chat':
         return selectedSpeakingUnit && selectedAIFriend && <RealLifeAIChatPage unit={selectedSpeakingUnit} character={selectedAIFriend} onBack={() => navigateTo('speaking-lesson', selectedSpeakingUnit)} language={language} {...aiProps} />;
-
       case 'grammar': return <GrammarPage language={language} focusedLevel={null} onNavigateBack={resetToHome} onSelectLevel={(level) => navigateTo('grammar-level', level)} onSelectTopic={(topic) => navigateTo('lesson', topic)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
       case 'grammar-level': return selectedLevel && <GrammarPage language={language} focusedLevel={selectedLevel} onNavigateBack={() => navigateTo('grammar')} onSelectLevel={(level) => navigateTo('grammar-level', level)} onSelectTopic={(topic) => navigateTo('lesson', topic)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
       case 'vocabulary': return <VocabularyPage language={language} onBack={resetToHome} onSelectUnit={(unit) => navigateTo('vocabulary-lesson', unit)} isGuest={isGuest} onOpenAuthModal={() => handleOpenAuthModal('signup')} />;
@@ -294,34 +270,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white selection:bg-[#ff8a65] selection:text-white">
-      <Header 
-        onNavigate={navigateTo}
-        onOpenAuthModal={handleOpenAuthModal}
-        currentView={view} 
-        language={language}
-        onLanguageChange={setLanguage}
-        credit={credit}
-        isGuest={isGuest}
-        user={user}
-      />
-      <main>
-        {renderContent()}
-      </main>
+      <Header onNavigate={navigateTo} onOpenAuthModal={handleOpenAuthModal} currentView={view} language={language} onLanguageChange={setLanguage} credit={credit} isGuest={isGuest} user={user} />
+      <main>{renderContent()}</main>
       <Footer language={language} />
-      {authModal.isOpen && (
-        <AuthModal
-          isOpen={authModal.isOpen}
-          mode={authModal.mode}
-          onClose={handleCloseAuthModal}
-          onSwitchMode={handleSwitchAuthMode}
-        />
-      )}
-      <CreditModal 
-        isOpen={isCreditModalOpen}
-        onClose={() => setIsCreditModalOpen(false)}
-        onSignUp={() => { setIsCreditModalOpen(false); handleOpenAuthModal('signup'); }}
-        isGuest={isGuest}
-      />
+      {authModal.isOpen && <AuthModal isOpen={authModal.isOpen} mode={authModal.mode} onClose={handleCloseAuthModal} onSwitchMode={handleSwitchAuthMode} />}
+      <CreditModal isOpen={isCreditModalOpen} onClose={() => setIsCreditModalOpen(false)} onSignUp={() => { setIsCreditModalOpen(false); handleOpenAuthModal('signup'); }} isGuest={isGuest} />
     </div>
   );
 };
