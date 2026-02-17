@@ -1,4 +1,3 @@
-
 import React, {useEffect} from 'react';
 import { getGrammarLevels } from '../constants';
 import { GrammarASA } from '../games/GrammarASA';
@@ -32,7 +31,6 @@ const GrammarCard: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0]; onC
          </div>
          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-slate-50 rounded-lg">
             <div className="w-12 h-8 relative rounded-md overflow-hidden shadow-sm border border-gray-100">
-                {/* Icelandic Flag */}
                 <div className="absolute inset-0 bg-[#003897]"></div>
                 <div className="absolute top-1/2 left-0 w-full h-[8px] -translate-y-1/2 bg-white"></div>
                 <div className="absolute left-[13px] top-0 w-[8px] h-full bg-white"></div>
@@ -100,16 +98,15 @@ const LevelDetailView: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0];
 
     return () => {
       const duration = Math.round((performance.now() - startTime) / 1000);
-      if (duration > 5) { // Log only if session is longer than 5 seconds
+      if (duration > 5) {
         const email = localStorage.getItem('userEmail');
-        if (email) { // Only log if user is logged in
+        if (email) {
             const params = new URLSearchParams();
             params.append('action', 'logGame');
             params.append('email', email);
             params.append('section', 'Grammar');
             params.append('gameName', level.title);
             params.append('duration', `${duration}s`);
-            
             navigator.sendBeacon(SCRIPT_URL, params);
         }
       }
@@ -124,7 +121,6 @@ const LevelDetailView: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0];
         </h1>
       </div>
 
-      {/* Game Container - Responsive Aspect Ratio */}
       <div className="my-12 max-w-4xl mx-auto">
           <div className="relative w-full portrait:aspect-[9/16] landscape:aspect-video rounded-lg shadow-md overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 max-h-[100vh]">
               {level.badge === 'ASA' ? (
@@ -168,26 +164,19 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
   const t = translations[language];
   const grammarLevels = getGrammarLevels(language);
   const currentLevel = grammarLevels.find(l => l.badge === focusedLevel);
-  const unlockedLevels = ['ASA', 'AQA'];
+
+  // --- THAY ĐỔI: Danh sách mở khóa sẽ được điều khiển bởi OPEN_LESSON_IDS ở App.tsx ---
+  const freeLevelsForGuest = ['ASA']; // Chỉ hiện level mở sẵn, các level khác sẽ tự hiện Lock
 
   return (
     <div className="pt-24 md:pt-32 pb-32 bg-white min-h-screen">
       <div className="max-w-[1200px] mx-auto px-6">
         <nav className="flex items-center gap-2 text-[13px] text-slate-400 mb-12 uppercase tracking-widest font-bold">
-          <span 
-            className="hover:text-[#1e5aa0] cursor-pointer transition-colors"
-            onClick={onNavigateBack}
-          >{t.pages.home}</span>
+          <span className="hover:text-[#1e5aa0] cursor-pointer transition-colors" onClick={onNavigateBack}>{t.pages.home}</span>
           <span className="text-slate-300">/</span>
-          <span 
-            className="hover:text-[#1e5aa0] cursor-pointer transition-colors"
-            onClick={onNavigateBack}
-          >{t.pages.learn}</span>
+          <span className="hover:text-[#1e5aa0] cursor-pointer transition-colors" onClick={onNavigateBack}>{t.pages.learn}</span>
           <span className="text-slate-300">/</span>
-          <span 
-            className={`transition-colors cursor-pointer ${focusedLevel ? 'hover:text-[#1e5aa0]' : 'text-slate-800'}`} 
-            onClick={onNavigateBack}
-          >{t.pages.grammar}</span>
+          <span className={`transition-colors cursor-pointer ${focusedLevel ? 'hover:text-[#1e5aa0]' : 'text-slate-800'}`} onClick={onNavigateBack}>{t.pages.grammar}</span>
           {focusedLevel && (
             <>
               <span className="text-slate-300">/</span>
@@ -221,22 +210,26 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {grammarLevels.map((level) => {
-              const locked = isGuest && !unlockedLevels.includes(level.badge);
+              // --- THAY ĐỔI: Phá bỏ logic tự chặn, chỉ giữ lại UI Lock nếu muốn ---
+              const isLockedUI = isGuest && !freeLevelsForGuest.includes(level.badge);
+              
               return (
                  <div 
                   key={level.badge} 
                   className="relative"
-                  onClick={() => { if (locked) onOpenAuthModal(); }}
+                  onClick={() => onSelectLevel(level.badge)} // Cứ cho bấm, App.tsx sẽ chặn nếu bài đó không nằm trong Whitelist
                 >
                   <GrammarCard 
                     level={level} 
-                    onClick={() => { if (!locked) onSelectLevel(level.badge); }}
+                    onClick={() => {}} // onClick đã được xử lý ở div cha
                     lang={language}
                   />
-                  {locked && (
-                    <div className="absolute inset-0 bg-slate-50/70 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center text-center p-4 cursor-pointer">
-                      <Lock size={32} className="text-slate-500 mb-4" />
-                      <p className="font-bold text-slate-600">Sign up to access</p>
+                  {isLockedUI && (
+                    <div className="absolute inset-0 bg-slate-50/40 backdrop-blur-[1px] rounded-[2.5rem] pointer-events-none flex flex-col items-center justify-center text-center p-4">
+                      {/* Chỉ hiện biểu tượng khóa mờ để báo hiệu bài này cần Premium, nhưng không chặn event click */}
+                      <div className="bg-white/80 p-3 rounded-full shadow-lg">
+                        <Lock size={24} className="text-slate-400" />
+                      </div>
                     </div>
                   )}
                 </div>
