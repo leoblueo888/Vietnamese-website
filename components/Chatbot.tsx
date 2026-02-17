@@ -107,16 +107,18 @@ export const Chatbot: React.FC = () => {
                     return;
                 }
 
+            const playNextChunk = () => {
+                if (currentChunkIndex >= chunks.length) return;
                 const chunk = chunks[currentChunkIndex];
                 if (chunk && audioRef.current) {
-                    const ttsLang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
+                    const ttsLang = currentLang === 'ru' ? 'ru' : 'vi';
                     audioRef.current.src = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${ttsLang}&client=tw-ob`;
+                    audioRef.current.load();
                     audioRef.current.onended = () => {
                         currentChunkIndex++;
                         playNextChunk();
                     };
-                    audioRef.current.play().catch(e => {
-                        console.error("Audio playback failed for chunk:", chunk, e);
+                    audioRef.current.play().catch(() => {
                         currentChunkIndex++;
                         playNextChunk();
                     });
@@ -126,7 +128,6 @@ export const Chatbot: React.FC = () => {
                 }
             };
             playNextChunk();
-        }
     }, [stopAudio, currentLang]);
 
     // Global listener to speak new bot messages.
@@ -210,9 +211,9 @@ ${docText}
 
             const systemInstruction = lang === 'ru' ? russianSystemInstruction : englishSystemInstruction;
     
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ import.meta.env.VITE_GEMINI_API_KEY });
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.5-flash',
                 contents: trimmedMessage,
                 config: { systemInstruction },
             });
