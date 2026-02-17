@@ -1,0 +1,7 @@
+{
+  "name": "READY 3  Truly Easy Vietnamese",
+  "description": "A modern, airy Vietnamese learning platform with interactive video lessons and smart practice tools.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

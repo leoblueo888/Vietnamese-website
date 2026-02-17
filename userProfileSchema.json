@@ -1,0 +1,108 @@
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "User Profile Data Schema",
+  "description": "Defines the structure for a user's progress and performance report on the language learning platform.",
+  "type": "object",
+  "properties": {
+    "user": {
+      "type": "object",
+      "description": "Basic information about the user.",
+      "properties": {
+        "name": { "type": "string", "description": "User's full name." },
+        "avatarUrl": { "type": "string", "format": "uri", "description": "URL to the user's profile picture." },
+        "membershipStatus": { "type": "string", "enum": ["Free", "Premium", "Pro"], "description": "The user's current subscription level." }
+      },
+      "required": ["name", "avatarUrl", "membershipStatus"]
+    },
+    "performance": {
+      "type": "object",
+      "description": "High-level performance metrics.",
+      "properties": {
+        "totalSpeakingTime": { "type": "number", "minimum": 0, "description": "Total hours spent in speaking practice." },
+        "overallPronunciationScore": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Average pronunciation score as a percentage." },
+        "topicsCompleted": { "type": "integer", "minimum": 0, "description": "Number of topics the user has mastered." },
+        "totalTopics": { "type": "integer", "minimum": 0, "description": "Total number of available topics." }
+      },
+      "required": ["totalSpeakingTime", "overallPronunciationScore", "topicsCompleted", "totalTopics"]
+    },
+    "topics": {
+      "type": "array",
+      "description": "List of all learning topics and the user's progress on them.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["Locked", "Unlocked", "Mastered"] },
+          "newWords": { "type": "integer", "minimum": 0 },
+          "keyPhrases": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["id", "title", "status", "newWords", "keyPhrases"]
+      }
+    },
+    "aiConnections": {
+      "type": "array",
+      "description": "User's relationship and fluency level with different AI characters.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "age": { "type": "integer" },
+          "avatarUrl": { "type": "string", "format": "uri" },
+          "fluencyLevel": { "type": "integer", "minimum": 0, "maximum": 100 }
+        },
+        "required": ["id", "name", "age", "avatarUrl", "fluencyLevel"]
+      }
+    },
+    "correctionCenter": {
+      "type": "object",
+      "description": "Tracks mistakes made and corrected by the user.",
+      "properties": {
+        "uncorrected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "said": { "type": "string" },
+              "correct": { "type": "string" }
+            },
+            "required": ["id", "said", "correct"]
+          }
+        },
+        "corrected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "phrase": { "type": "string" }
+            },
+            "required": ["id", "phrase"]
+          }
+        }
+      },
+      "required": ["uncorrected", "corrected"]
+    },
+    "pronunciationDeepDive": {
+      "type": "array",
+      "description": "Scores for specific words practiced.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "word": { "type": "string" },
+          "score": { "type": "integer", "minimum": 0, "maximum": 100 }
+        },
+        "required": ["word", "score"]
+      }
+    },
+    "aiMemoryVault": {
+      "type": "array",
+      "description": "Personal facts the AI has learned about the user.",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["user", "performance", "topics", "aiConnections", "correctionCenter", "pronunciationDeepDive", "aiMemoryVault"]
+}

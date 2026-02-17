@@ -1,0 +1,59 @@
+{
+  "$schema": "./userProfileSchema.json",
+  "user": {
+    "name": "Alex Doe",
+    "avatarUrl": "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    "membershipStatus": "Premium"
+  },
+  "performance": {
+    "totalSpeakingTime": 14.5,
+    "overallPronunciationScore": 88,
+    "topicsCompleted": 4,
+    "totalTopics": 12
+  },
+  "topics": [
+    { "id": "topic_1", "title": "Meeting New Friends", "status": "Mastered", "newWords": 22, "keyPhrases": 9 },
+    { "id": "topic_2", "title": "Talking About Family", "status": "Mastered", "newWords": 30, "keyPhrases": 14 },
+    { "id": "topic_3", "title": "Talking About Your Job", "status": "Mastered", "newWords": 35, "keyPhrases": 11 },
+    { "id": "topic_4", "title": "Discussing Your Studies", "status": "Mastered", "newWords": 28, "keyPhrases": 13 },
+    { "id": "topic_5", "title": "Sports & Exercise", "status": "Unlocked", "newWords": 15, "keyPhrases": 7 },
+    { "id": "topic_6", "title": "Food & Drink", "status": "Unlocked", "newWords": 20, "keyPhrases": 9 },
+    { "id": "topic_7", "title": "The Beach", "status": "Locked", "newWords": 0, "keyPhrases": 0 },
+    { "id": "topic_8", "title": "Artificial Intelligence (AI)", "status": "Locked", "newWords": 0, "keyPhrases": 0 },
+    { "id": "topic_9", "title": "Traveling", "status": "Locked", "newWords": 0, "keyPhrases": 0 },
+    { "id": "topic_10", "title": "Music", "status": "Locked", "newWords": 0, "keyPhrases": 0 },
+    { "id": "topic_11", "title": "Youtube and Movies", "status": "Locked", "newWords": 0, "keyPhrases": 0 },
+    { "id": "topic_12", "title": "Social Network", "status": "Locked", "newWords": 0, "keyPhrases": 0 }
+  ],
+  "aiConnections": [
+    { "id": "ai_1", "name": "Lan", "age": 25, "avatarUrl": "https://lh3.googleusercontent.com/d/13mqljSIRC9hvO-snymkzuUiV4Fypqcft", "fluencyLevel": 90 },
+    { "id": "ai_2", "name": "Thu", "age": 35, "avatarUrl": "https://lh3.googleusercontent.com/d/1aJFCfbbdfLmo0-c4NtNtHtFNWQiMXpLz", "fluencyLevel": 75 },
+    { "id": "ai_3", "name": "Mai", "age": 45, "avatarUrl": "https://lh3.googleusercontent.com/d/1l8eqtV6ISGB2-KTg0ysbPIflAIw6bN9D", "fluencyLevel": 60 }
+  ],
+  "correctionCenter": {
+    "uncorrected": [
+      { "id": "err_1", "said": "Tôi muốn mua một sách.", "correct": "Tôi muốn mua một quyển sách." },
+      { "id": "err_2", "said": "Cái đỏ xe đẹp.", "correct": "Cái xe màu đỏ thì đẹp." },
+      { "id": "err_3", "said": "Cô ấy là cao.", "correct": "Cô ấy cao." }
+    ],
+    "corrected": [
+      { "id": "corr_1", "phrase": "Thời tiết hôm nay đẹp quá." },
+      { "id": "corr_2", "phrase": "Hôm qua tôi đã đi siêu thị." }
+    ]
+  },
+  "pronunciationDeepDive": [
+    { "word": "phở", "score": 95 },
+    { "word": "bánh mì", "score": 92 },
+    { "word": "nguyễn", "score": 75 },
+    { "word": "sài gòn", "score": 88 },
+    { "word": "cảm ơn", "score": 98 },
+    { "word": "xin chào", "score": 100 },
+    { "word": "khỏe", "score": 65 }
+  ],
+  "aiMemoryVault": [
+    "Lives in District 1",
+    "Works as a software developer",
+    "Prefers formal 'Chào Chị'",
+    "Has a cat named 'Miu'"
+  ]
+}
