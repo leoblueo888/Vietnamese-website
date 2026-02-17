@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Chatbot } from './Chatbot';
+import { Chatbot } from './Chatbot.tsx';
 import { Language, AuthMode } from '../App';
 import { translations } from '../translations';
 
