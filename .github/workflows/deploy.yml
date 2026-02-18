@@ -22,11 +22,16 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        # Dùng install thường và bỏ qua mọi lỗi xung đột phiên bản
         run: npm install --legacy-peer-deps
 
       - name: Build
-        # Ép build bất chấp lỗi logic, chỉ cần ra file chạy
+        # Đây là phần quan trọng nhất để nạp "não" cho AI mà không bị lộ Key
+        env:
+          VITE_GEMINI_KEY_1: ${{ secrets.VITE_GEMINI_KEY_1 }}
+          VITE_GEMINI_KEY_2: ${{ secrets.VITE_GEMINI_KEY_2 }}
+          VITE_GEMINI_KEY_3: ${{ secrets.VITE_GEMINI_KEY_3 }}
+          VITE_GEMINI_KEY_4: ${{ secrets.VITE_GEMINI_KEY_4 }}
+          VITE_GEMINI_KEY_5: ${{ secrets.VITE_GEMINI_KEY_5 }}
         run: npx vite build
 
       - name: Upload Artifacts
