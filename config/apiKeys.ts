@@ -1,56 +1,51 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Lấy danh sách Keys từ biến môi trường để bảo mật
+// Tự động lấy 5 key từ biến môi trường đã nạp
 const GEMINI_API_KEYS: string[] = [
-    import.meta.env.VITE_GEMINI_KEY_1 || '',
-    import.meta.env.VITE_GEMINI_KEY_2 || '',
-    import.meta.env.VITE_GEMINI_KEY_3 || '',
-    import.meta.env.VITE_GEMINI_KEY_4 || '',
-    import.meta.env.VITE_GEMINI_KEY_5 || '',
-    import.meta.env.VITE_GEMINI_KEY_6 || '',
-    import.meta.env.VITE_GEMINI_KEY_7 || '',
-    import.meta.env.VITE_GEMINI_KEY_8 || '',
-    import.meta.env.VITE_GEMINI_KEY_9 || '',
-    import.meta.env.VITE_GEMINI_KEY_10 || '',
-].filter(key => key !== ''); // Chỉ giữ lại các key có giá trị
+  import.meta.env.VITE_GEMINI_KEY_1,
+  import.meta.env.VITE_GEMINI_KEY_2,
+  import.meta.env.VITE_GEMINI_KEY_3,
+  import.meta.env.VITE_GEMINI_KEY_4,
+  import.meta.env.VITE_GEMINI_KEY_5,
+].filter(key => key && key.length > 0); // Chỉ lấy những key đã được nạp
 
-let currentApiKeyIndex = 0;
+let currentKeyIndex = 0;
 
-export const generateContentWithRetry = async (modelName: string, prompt: string) => {
-    if (GEMINI_API_KEYS.length === 0) {
-        console.error("No API Keys found. Please check your Environment Variables.");
-        throw new Error("Cấu hình API Key chưa đúng. Vui lòng kiểm tra lại.");
+/**
+ * Hàm gọi AI với cơ chế xoay vòng và tự động thử lại nếu lỗi
+ */
+export const generateContentWithRetry = async (prompt: string) => {
+  if (GEMINI_API_KEYS.length === 0) {
+    console.error("Chưa có API Key nào được nạp vào Environment Variables!");
+    return "Lỗi: Hệ thống chưa cấu hình API Key.";
+  }
+
+  let attempts = 0;
+  while (attempts < GEMINI_API_KEYS.length) {
+    const keyIndex = (currentKeyIndex + attempts) % GEMINI_API_KEYS.length;
+    const apiKey = GEMINI_API_KEYS[keyIndex];
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      
+      // Thành công thì cập nhật index cho lần sau dùng key tiếp theo (load balancing)
+      currentKeyIndex = (keyIndex + 1) % GEMINI_API_KEYS.length;
+      return response.text();
+
+    } catch (error: any) {
+      console.warn(`Key thứ ${keyIndex + 1} bị lỗi, đang thử key tiếp theo...`);
+      attempts++;
+      
+      // Nếu là lỗi 429 (quá tải), chờ một chút trước khi thử tiếp
+      if (error.message?.includes('429')) {
+        await new Promise(res => setTimeout(res, 1000));
+      }
     }
+  }
 
-    let lastError: any;
-    let delay = 1000;
-
-    for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-        const keyIndex = (currentApiKeyIndex + i) % GEMINI_API_KEYS.length;
-        const apiKey = GEMINI_API_KEYS[keyIndex];
-        
-        try {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: modelName });
-            
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            
-            // Thành công: Cập nhật index cho lần gọi sau
-            currentApiKeyIndex = (keyIndex + 1) % GEMINI_API_KEYS.length;
-            return response.text(); 
-            
-        } catch (error: any) {
-            console.warn(`Key index ${keyIndex} thất bại: ${error.message}`);
-            lastError = error;
-
-            // Nếu gặp lỗi giới hạn (429), chờ rồi thử key tiếp theo
-            if (error.message?.includes('429') || JSON.stringify(error).includes('429')) {
-                await new Promise(res => setTimeout(res, delay));
-                delay *= 2; 
-            }
-        }
-    }
-
-    throw lastError || new Error("Tất cả API keys đều thất bại.");
+  return "Tất cả API Keys đều đang bận hoặc lỗi. Vui lòng thử lại sau!";
 };
