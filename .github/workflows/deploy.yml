@@ -19,16 +19,13 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
 
       - name: Install dependencies
         run: npm install --no-package-lock --legacy-peer-deps
 
       - name: Build
-        # Thêm CI=false để nó không dừng lại khi gặp cảnh báo (warning)
-        run: |
-          export CI=false
-          npm run build
+        run: npx --package vite vite build
 
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
