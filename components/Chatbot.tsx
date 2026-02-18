@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const Chatbot: React.FC = () => {
     const [currentLang, setCurrentLang] = useState<'en' | 'ru'>(() => (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en');
-
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ text: string; isBot: boolean }[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
     const [interimTranscript, setInterimTranscript] = useState('');
-
-    const recognitionRef = useRef<any | null>(null);
+    
     const chatBodyRef = useRef<HTMLDivElement>(null);
+    const recognitionRef = useRef<any | null>(null);
     const finalTranscriptRef = useRef('');
-    const prevMessagesLength = useRef(0);
+
+    const API_KEY = "AIzaSyDBYaDEMaGo2pO3TFEGigVLOSXLfy8Vktg";
+    const MODEL = "gemini-2.0-flash"; // Model xịn nhất 2026
 
     const translations = {
         en: {
@@ -33,115 +33,91 @@ export const Chatbot: React.FC = () => {
         }
     };
 
-    // --- 2026 AUDIO LOGIC: WEB SPEECH API (TTS) ---
-    // Chỉ nói khi có sự kiện click hoặc tin nhắn mới, không auto-play khi load trang
+    // --- CƠ CHẾ ÂM THANH (WEB SPEECH API) ---
     const speak = useCallback((text: string) => {
         if (!window.speechSynthesis) return;
         
-        // Hủy mọi âm thanh cũ đang phát để tránh chồng chéo
+        // Hủy mọi phiên âm thanh đang chạy trước đó
         window.speechSynthesis.cancel();
 
         const cleanedText = text.replace(/[*_`#]/g, '').trim();
         if (!cleanedText) return;
 
         const utterance = new SpeechSynthesisUtterance(cleanedText);
-        
-        // Tự động nhận diện giọng đọc theo ngôn ngữ hiện tại
         utterance.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
-        utterance.rate = 1.0; 
+        utterance.rate = 1.0;
         utterance.pitch = 1.0;
 
+        // Xử lý lỗi im lặng trên một số trình duyệt bằng cách gọi trong event user
         window.speechSynthesis.speak(utterance);
     }, [currentLang]);
 
-    const stopAudio = useCallback(() => {
+    const stopAudio = () => {
         if (window.speechSynthesis) window.speechSynthesis.cancel();
-    }, []);
+    };
 
-    // Sync ngôn ngữ khi thay đổi ở Header
-    useEffect(() => {
-        const handleLangChange = () => {
-            const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
-            setCurrentLang(newLang);
-        };
-        window.addEventListener('languageChanged', handleLangChange);
-        return () => window.removeEventListener('languageChanged', handleLangChange);
-    }, []);
+    // --- XỬ LÝ GỌI API GEMINI ---
+    const handleSendMessage = useCallback(async (messageText: string) => {
+        const trimmedMessage = messageText.trim();
+        if (!trimmedMessage || isLoadingAI) return;
 
-    // Khởi tạo tin nhắn chào hỏi ban đầu (Không tự động đọc ở đây)
-    useEffect(() => {
-        setMessages([{ text: translations[currentLang].initialMessage, isBot: true }]);
-        prevMessagesLength.current = 1;
-    }, [currentLang]);
+        stopAudio();
+        setMessages(prev => [...prev, { text: trimmedMessage, isBot: false }]);
+        setInputValue('');
+        setIsLoadingAI(true);
 
-    // Đọc tin nhắn mới của Bot (Chỉ đọc khi khung chat đang mở)
-    useEffect(() => {
-        if (isOpen && messages.length > prevMessagesLength.current) {
-            const lastMessage = messages[messages.length - 1];
-            if (lastMessage.isBot) {
-                speak(lastMessage.text);
+        try {
+            // 1. Lấy dữ liệu kiến thức từ Google Doc
+            const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
+            const docResponse = await fetch(docUrl);
+            const docText = docResponse.ok ? await docResponse.text() : "Truly Easy Vietnamese is a language learning platform.";
+
+            // 2. Gọi API Gemini trực tiếp qua Fetch (ổn định hơn SDK trong môi trường Web)
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{
+                            text: `You are Trang, an AI assistant for 'Truly Easy Vietnamese'. 
+                                   Source info: ${docText}
+                                   Rules: Be friendly, answer in ${currentLang === 'ru' ? 'Russian' : 'English'}, keep it under 3 sentences.
+                                   User: ${trimmedMessage}`
+                        }]
+                    }]
+                })
+            });
+
+            const data = await response.json();
+            const aiText = data.candidates[0].content.parts[0].text;
+
+            if (aiText) {
+                setMessages(prev => [...prev, { text: aiText, isBot: true }]);
+                speak(aiText); // AI trả lời xong thì nói luôn
             }
+        } catch (error) {
+            console.error("Chatbot error:", error);
+            const errorMsg = currentLang === 'ru' ? "Ой, ошибка подключения!" : "Oops, connection error!";
+            setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
+        } finally {
+            setIsLoadingAI(false);
         }
-        prevMessagesLength.current = messages.length;
-    }, [messages, speak, isOpen]);
+    }, [isLoadingAI, currentLang, speak]);
 
+    // Mở/Đóng chat
     const toggleChat = () => {
         if (!isOpen) {
-            // Khi mở chat, delay một chút rồi mới chào để tạo cảm giác tự nhiên
-            setTimeout(() => speak(translations[currentLang].initialMessage), 400);
+            // Mẹo: Kích hoạt âm thanh trống để xin quyền trình duyệt
+            const silentUtterance = new SpeechSynthesisUtterance("");
+            window.speechSynthesis.speak(silentUtterance);
+            
+            // Chào sau 300ms
+            setTimeout(() => speak(translations[currentLang].initialMessage), 300);
         } else {
             stopAudio();
         }
         setIsOpen(!isOpen);
     };
-
-    useEffect(() => {
-        if (chatBodyRef.current) {
-            chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
-        }
-    }, [messages, isLoadingAI, interimTranscript]);
-
-    // --- AI LOGIC: GEMINI 2.0 FLASH ---
-    const handleSendMessage = useCallback(async (messageText: string) => {
-        const trimmedMessage = messageText.trim();
-        if (!trimmedMessage || isLoadingAI) return;
-    
-        stopAudio();
-        setMessages(prev => [...prev, { text: trimmedMessage, isBot: false }]);
-        setInputValue('');
-        setIsLoadingAI(true);
-    
-        try {
-            // Lấy kiến thức từ Doc (Knowledge Base)
-            const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
-            const docResponse = await fetch(docUrl);
-            const docText = docResponse.ok ? await docResponse.text() : "";
-
-            const systemInstruction = currentLang === 'ru' 
-                ? `Вы — Trang, ИИ-ассистент 'Truly Easy Vietnamese'. Используйте ТОЛЬКО этот текст: ${docText}. Будьте дружелюбны, отвечайте кратко.`
-                : `You are Trang, AI assistant for 'Truly Easy Vietnamese'. Use ONLY this text: ${docText}. Be friendly and concise.`;
-
-            // Khởi tạo AI với model 2026 (Gemini 2.0 Flash)
-            const genAI = new GoogleGenerativeAI("YOUR_ACTUAL_API_KEY_HERE"); 
-            const model = genAI.getGenerativeModel({ 
-                model: "gemini-2.0-flash",
-                systemInstruction: systemInstruction
-            });
-
-            const result = await model.generateContent(trimmedMessage);
-            const aiResponse = result.response.text();
-
-            if (aiResponse) {
-                setMessages(prev => [...prev, { text: aiResponse, isBot: true }]);
-            }
-        } catch (error) {
-            console.error("AI Error:", error);
-            const errorMsg = currentLang === 'ru' ? "Ой, что-то пошло не так!" : "Oops! Something went wrong.";
-            setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
-        } finally {
-            setIsLoadingAI(false);
-        }
-    }, [isLoadingAI, stopAudio, currentLang]);
 
     // --- SPEECH TO TEXT (STT) ---
     useEffect(() => {
@@ -170,7 +146,6 @@ export const Chatbot: React.FC = () => {
                     handleSendMessage(finalTranscriptRef.current);
                     finalTranscriptRef.current = '';
                 }
-                setInterimTranscript('');
             };
             recognitionRef.current = recognition;
         }
@@ -188,43 +163,50 @@ export const Chatbot: React.FC = () => {
         }
     };
 
+    // Tự động cuộn xuống
+    useEffect(() => {
+        if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
+    }, [messages, interimTranscript, isLoadingAI]);
+
+    // Reset tin nhắn khi đổi ngôn ngữ
+    useEffect(() => {
+        setMessages([{ text: translations[currentLang].initialMessage, isBot: true }]);
+    }, [currentLang]);
+
     return (
         <>
             <style>{`
                 @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
                 .animate-float { animation: float 4s ease-in-out infinite; }
-                .loading-dots { display: flex; gap: 4px; }
-                .dot { width: 6px; height: 6px; background: #1e5aa0; border-radius: 50%; animation: blink 1.4s infinite both; }
-                .dot:nth-child(2) { animation-delay: 0.2s; }
-                .dot:nth-child(3) { animation-delay: 0.4s; }
-                @keyframes blink { 0% { opacity: 0.2; } 20% { opacity: 1; } 100% { opacity: 0.2; } }
+                .dot-loading { animation: dot-blink 1.4s infinite both; }
+                @keyframes dot-blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
             `}</style>
 
-            {/* Nút Chat tròn */}
+            {/* Nút Chat */}
             <button onClick={toggleChat} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 group animate-float">
-                <span className="hidden md:block bg-white px-4 py-2 rounded-full shadow-xl text-[#1e5aa0] font-bold text-sm border border-blue-50">
+                <span className="hidden md:block bg-white/90 backdrop-blur-md font-bold text-[#1e5aa0] text-xs px-4 py-2 rounded-full shadow-lg border border-blue-50 transition-all group-hover:bg-blue-50">
                     {translations[currentLang].assistantLabel}
                 </span>
                 <div className="w-16 h-16 bg-white rounded-full shadow-2xl flex items-center justify-center border-2 border-blue-100 overflow-hidden group-hover:scale-110 transition-transform">
-                    <img src="https://i.imgur.com/your_avatar_trang.png" alt="Trang" className="w-full h-full object-cover" />
+                    <img src="https://lh3.googleusercontent.com/a/default-user" alt="Trang" className="w-full h-full object-cover" />
                 </div>
             </button>
 
             {/* Cửa sổ Chat */}
-            <div className={`fixed bottom-24 right-6 w-[360px] h-[580px] bg-white rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col transition-all duration-500 z-50 ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+            <div className={`fixed bottom-28 right-6 w-[360px] h-[580px] bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 flex flex-col transition-all duration-500 ease-in-out z-50 ${isOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-10 pointer-events-none'}`}>
                 
                 {/* Header */}
-                <div className="p-6 bg-slate-50 rounded-t-[2rem] border-b text-center relative">
-                    <div className="relative inline-block">
-                        <img src="https://i.imgur.com/your_avatar_trang.png" alt="Trang" className="w-16 h-16 rounded-full border-4 border-white shadow-md" />
-                        <span className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></span>
+                <div className="p-6 bg-gradient-to-b from-slate-50 to-white rounded-t-[2.5rem] border-b flex flex-col items-center relative">
+                    <div className="relative">
+                        <img src="https://lh3.googleusercontent.com/a/default-user" alt="Trang" className="w-14 h-14 rounded-full border-4 border-white shadow-md" />
+                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
                     </div>
-                    <h3 className="font-black text-slate-800 text-lg mt-2">Trang</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">AI Expert Assistant</p>
+                    <h3 className="font-black text-slate-800 mt-2">Trang AI</h3>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Truly Easy Assistant</p>
                     <button onClick={toggleChat} className="absolute top-6 right-6 text-slate-300 hover:text-red-500 transition-colors text-2xl">×</button>
                 </div>
 
-                {/* Body */}
+                {/* Nội dung chat */}
                 <div ref={chatBodyRef} className="flex-1 p-5 overflow-y-auto space-y-4">
                     {messages.map((msg, index) => (
                         <div key={index} className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}>
@@ -234,31 +216,29 @@ export const Chatbot: React.FC = () => {
                         </div>
                     ))}
                     {interimTranscript && (
-                        <div className="flex justify-end">
-                            <div className="max-w-[85%] px-4 py-2.5 rounded-2xl bg-blue-50 text-blue-400 text-sm italic rounded-tr-none">
-                                {interimTranscript}
-                            </div>
-                        </div>
+                        <div className="flex justify-end italic text-blue-300 text-xs">{interimTranscript}</div>
                     )}
                     {isLoadingAI && (
-                        <div className="flex justify-start pl-2">
-                            <div className="loading-dots px-4 py-3 bg-slate-50 rounded-2xl">
-                                <div className="dot"></div><div className="dot"></div><div className="dot"></div>
+                        <div className="flex justify-start">
+                            <div className="bg-slate-100 px-4 py-3 rounded-2xl flex gap-1">
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full dot-loading"></div>
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full dot-loading" style={{animationDelay: '0.2s'}}></div>
+                                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full dot-loading" style={{animationDelay: '0.4s'}}></div>
                             </div>
                         </div>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="p-5 border-t bg-white rounded-b-[2rem]">
-                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="p-5 bg-white border-t rounded-b-[2.5rem]">
+                    <div className="flex gap-2 mb-4 overflow-x-auto pb-1 no-scrollbar">
                         {translations[currentLang].quickReplies.map(reply => (
-                            <button key={reply} onClick={() => handleSendMessage(reply)} className="whitespace-nowrap bg-blue-50 text-[#1e5aa0] text-[11px] font-bold px-4 py-2 rounded-full hover:bg-blue-100 transition-colors">
+                            <button key={reply} onClick={() => handleSendMessage(reply)} className="whitespace-nowrap bg-blue-50 text-[#1e5aa0] text-[10px] font-bold px-4 py-2 rounded-full hover:bg-blue-100 transition-colors">
                                 {reply}
                             </button>
                         ))}
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-50 transition-all">
+                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border focus-within:ring-2 focus-within:ring-blue-100 transition-all">
                         <input 
                             type="text" 
                             className="flex-1 bg-transparent border-none px-3 py-1 text-sm outline-none"
@@ -269,7 +249,7 @@ export const Chatbot: React.FC = () => {
                         />
                         <button 
                             onClick={toggleRecording}
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-slate-400 hover:text-[#1e5aa0] shadow-sm'}`}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-red-200' : 'bg-white text-slate-400 hover:text-blue-600 shadow-sm'}`}
                         >
                             {isRecording ? '●' : '🎤'}
                         </button>
