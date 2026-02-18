@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Tự động quét từ 1 đến 10
 const GEMINI_API_KEYS: string[] = [
   import.meta.env.VITE_GEMINI_KEY_1,
   import.meta.env.VITE_GEMINI_KEY_2,
@@ -12,33 +11,32 @@ const GEMINI_API_KEYS: string[] = [
   import.meta.env.VITE_GEMINI_KEY_8,
   import.meta.env.VITE_GEMINI_KEY_9,
   import.meta.env.VITE_GEMINI_KEY_10,
-].filter(key => key && key.length > 10);
-
-let currentKeyIndex = 0;
+].filter(key => key && key.startsWith("AIza"));
 
 export const generateContentWithRetry = async (prompt: string): Promise<string> => {
-  if (GEMINI_API_KEYS.length === 0) return "Lỗi: Không tìm thấy bất kỳ API Key nào!";
-
-  const safePrompt = prompt.trim() || "Chào bạn!";
+  // SỬA CHÍNH XÁC TÊN MODEL 2.5 FLASH Ở ĐÂY
+  const MODEL_NAME = "gemini-2.5-flash"; 
 
   for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-    const keyIndex = (currentKeyIndex + i) % GEMINI_API_KEYS.length;
     try {
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEYS[keyIndex]);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEYS[i]);
+      const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-      // Gửi theo format object để tránh lỗi 400
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: safePrompt }] }]
-      });
-
+      const result = await model.generateContent(prompt);
       const response = await result.response;
-      currentKeyIndex = (keyIndex + 1) % GEMINI_API_KEYS.length;
       return response.text();
     } catch (error: any) {
-      console.warn(`Key ${keyIndex + 1} báo lỗi: ${error.message}`);
-      // Nếu lỗi do Key (400, 403), vòng lặp sẽ tự chuyển sang Key tiếp theo
+      console.warn(`Key ${i + 1} (${MODEL_NAME}) lỗi: ${error.message}`);
+      
+      // Nếu lỗi 404, có thể do Google yêu cầu thêm hậu tố -latest cho bản 2.5
+      if (error.message.includes("404")) {
+         try {
+            const modelLatest = genAI.getGenerativeModel({ model: "gemini-2.5-flash-latest" });
+            const res = await modelLatest.generateContent(prompt);
+            return res.response.text();
+         } catch(e) { continue; }
+      }
     }
   }
-  return "Tất cả 10 Keys đều không hoạt động. Vui lòng kiểm tra lại cấu hình GitHub!";
+  return "Tất cả key Gemini 2.5 đều không phản hồi. Ông kiểm tra lại hạn mức credit nhé!";
 };
