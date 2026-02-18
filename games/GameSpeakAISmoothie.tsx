@@ -1,50 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Gauge, Maximize, Minimize } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, Gauge, Maximize, Minimize, Sparkles } from 'lucide-react';
 import type { AIFriend } from '../types';
 
-// --- DICTIONARY: THỰC ĐƠN SINH TỐ & SỨC KHỎE ---
+// Giữ lại Dictionary để người dùng di chuột vẫn học được từ khó
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "sinh tố": { EN: "smoothie", type: "Noun" },
   "nước ép": { EN: "juice", type: "Noun" },
-  "táo": { EN: "apple", type: "Noun" },
-  "cà rốt": { EN: "carrot", type: "Noun" },
-  "bơ": { EN: "avocado", type: "Noun" },
-  "cần tây": { EN: "celery", type: "Noun" },
-  "đẹp da": { EN: "good for skin", type: "Adj" },
-  "giảm cân": { EN: "lose weight", type: "Verb" },
+  "tư vấn": { EN: "to advise", type: "Verb" },
+  "thanh lọc": { EN: "detox", type: "Verb" },
   "năng lượng": { EN: "energy", type: "Noun" },
-  "ít đường": { EN: "less sugar", type: "Adj" },
-  "đá": { EN: "ice", type: "Noun" },
-  "sức khỏe": { EN: "health", type: "Noun" },
-  "tư vấn": { EN: "to advise", type: "Verb" }
-};
-
-const LANGUAGES = {
-  EN: {
-    label: "English",
-    ui_welcome: "Welcome to Xuan's Healthy Bar! I'm Xuan.",
-    ui_start: "ORDER NOW",
-    ui_placeholder: "Ask Xuan for a healthy drink...",
-    ui_status: "Online - Nutrition Expert",
-    ui_learning_title: "Chat with Xuan Barista",
-    welcome_msg: "Em chào Anh! Anh muốn tìm nước ép hay sinh tố tốt cho sức khỏe ạ? Em có thể tư vấn cho Anh nha! ✨ | Hi! Would you like some healthy juice or a smoothie? I can give you some advice! ✨",
-    systemPromptLang: "English"
-  },
-  RU: {
-    label: "Русский",
-    ui_welcome: "Добро пожаловать в Healthy Bar у Сюань!",
-    ui_start: "ЗАКАЗАТЬ",
-    ui_placeholder: "Спроси Сюань о напитках...",
-    ui_status: "Online - Эксперт",
-    ui_learning_title: "Trò chuyện với Xuân",
-    welcome_msg: "Em chào Anh! Anh muốn tìm nước ép hay sinh tố tốt cho sức khỏe ạ? Em tư vấn cho Anh nhé! ✨ | Здравствуйте! Хотите сок или смузи? Я могу вам посоветовать! ✨",
-    systemPromptLang: "Russian"
-  }
+  "đẹp da": { EN: "skin beautifying", type: "Adj" }
 };
 
 export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ character }) => {
   const [gameState, setGameState] = useState<'start' | 'playing'>('start');
-  const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -55,18 +24,22 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const isProcessingRef = useRef(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
+  const isProcessingRef = useRef(false);
 
-  const t = LANGUAGES[selectedLang];
+  // --- FULLSCREEN ---
+  const toggleFullscreen = () => {
+    if (!gameContainerRef.current) return;
+    if (!document.fullscreenElement) gameContainerRef.current.requestFullscreen();
+    else document.exitFullscreen();
+  };
 
-  // --- TTS TRÌNH DUYỆT (FIX LỖI SOURCE) ---
+  // --- TTS (WEB SPEECH) ---
   const speakWord = (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
     window.speechSynthesis.cancel();
-    const cleanText = text.split('|')[0].replace(/[*]/g, '').trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'vi-VN';
     utterance.rate = speechRate;
     utterance.onend = () => setActiveVoiceId(null);
@@ -83,7 +56,6 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        setUserInput(text);
         handleSendMessage(text);
       };
       recognition.onend = () => setIsRecording(false);
@@ -91,7 +63,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
     }
   }, []);
 
-  // --- AI BRIDGE (NHẬN DIỆN NHÂN VẬT XUÂN) ---
+  // --- AI ENGINE ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -107,28 +79,25 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          lang: selectedLang.toLowerCase(),
           systemPrompt: `
-            BỐN CẢNH: Bạn tên là Xuân, 22 tuổi, là chuyên gia pha chế sinh tố và nước ép sức khỏe.
-            TÍNH CÁCH: Vui vẻ, nhiệt tình, xưng "Em" gọi "Anh".
-            NHIỆM VỤ: 
-            1. Tư vấn đồ uống dựa trên nhu cầu khách (vd: đẹp da thì dùng cà rốt/cà chua, mệt mỏi thì dùng nước cam/táo, thanh lọc cơ thể thì dùng cần tây).
-            2. Trả lời ngắn gọn, tự nhiên như người bán hàng thật sự.
-            3. TUYỆT ĐỐI KHÔNG giải thích ngữ pháp hay dịch thuật dài dòng.
-            ĐỊNH DẠNG: Tiếng Việt | ${t.systemPromptLang} Translation.
+            BỐI CẢNH: Bạn tên là Xuân (22 tuổi), nhân viên tiệm sinh tố sức khỏe.
+            NHIỆM VỤ: Tư vấn các loại nước ép, sinh tố tốt cho sức khỏe.
+            QUY TẮC CỨNG: 
+            1. CHỈ nói tiếng Việt. Tuyệt đối KHÔNG dịch, KHÔNG giải thích tiếng Anh/Nga.
+            2. Xưng hô "Em" - "Anh". Dùng từ ngữ tự nhiên, lễ phép (Dạ, ạ).
+            3. Trả lời ngắn gọn, tập trung vào việc bán hàng và tư vấn món uống.
           `
         })
       });
 
       const data = await response.json();
       if (data.text) {
+        const cleanText = data.text.split('|')[0].trim();
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
-        speakWord(data.text, aiMsgId);
+        setMessages(prev => [...prev, { role: 'ai', text: cleanText, id: aiMsgId }]);
+        speakWord(cleanText, aiMsgId);
       }
-    } catch (e) {
-      console.error("API Error:", e);
-    } finally {
+    } catch (e) { console.error(e); } finally {
       setIsThinking(false);
       isProcessingRef.current = false;
     }
@@ -136,18 +105,17 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // --- INTERACTIVE TEXT ---
   const renderInteractiveText = (text: string) => {
-    if (!text) return null;
     const words = text.split(/(\s+)/);
     return words.map((word, idx) => {
-      const cleanWord = word.toLowerCase().replace(/[.,!?;]/g, '');
-      const entry = DICTIONARY[cleanWord];
-      if (entry) {
+      const clean = word.toLowerCase().replace(/[.,!?;]/g, '');
+      if (DICTIONARY[clean]) {
         return (
-          <span key={idx} className="group relative border-b border-dotted border-emerald-300 cursor-help text-emerald-700 font-medium">
+          <span key={idx} className="group relative border-b-2 border-dotted border-emerald-400 cursor-help text-emerald-800 font-bold">
             {word}
-            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg shadow-xl z-50 w-max">
-              {entry.EN}
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg w-max z-50">
+              {DICTIONARY[clean].EN}
             </span>
           </span>
         );
@@ -160,91 +128,72 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
     return (
       <div className="w-full h-full bg-emerald-50 flex items-center justify-center p-4">
         <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-emerald-100">
-          <img src={character.avatarUrl} className="w-40 h-40 mx-auto mb-6 rounded-full border-4 border-emerald-400 object-cover shadow-lg" />
-          <h1 className="text-3xl font-black text-emerald-700 mb-2 uppercase italic">Xuan's Smoothies 🌿</h1>
-          <p className="text-slate-400 mb-8 font-medium italic">{t.ui_welcome}</p>
-          <div className="flex flex-col gap-6 items-center">
-            <div className="flex gap-3">
-              {(['EN', 'RU'] as const).map(l => (
-                <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-2 rounded-xl font-bold transition-all ${selectedLang === l ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{l}</button>
-              ))}
-            </div>
-            <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} 
-              className="bg-emerald-600 text-white px-16 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all uppercase tracking-widest">
-              {t.ui_start}
-            </button>
+          <div className="relative w-40 h-40 mx-auto mb-6">
+            <img src={character.avatarUrl} className="w-full h-full rounded-full border-4 border-emerald-400 object-cover shadow-lg" />
+            <div className="absolute bottom-0 right-0 bg-white p-2 rounded-full shadow-lg text-emerald-600"><Sparkles size={20}/></div>
           </div>
+          <h1 className="text-3xl font-black text-emerald-700 mb-2 uppercase italic">Xuân's Healthy Bar 🥤</h1>
+          <p className="text-slate-400 mb-8 font-medium italic">Chuyên gia tư vấn đồ uống sức khỏe</p>
+          <button onClick={() => { setGameState('playing'); handleSendMessage("Chào Xuân"); }} 
+            className="bg-emerald-600 text-white px-16 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all uppercase tracking-widest">
+            BẮT ĐẦU CHAT
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div ref={gameContainerRef} className="w-full h-full bg-[#0F172A] flex flex-col md:flex-row overflow-hidden md:p-4">
-      {/* Sidebar */}
-      <div className="h-[25vh] md:h-full md:w-1/3 bg-[#F8FAFC] p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-200 shrink-0">
+    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex flex-col md:flex-row overflow-hidden md:p-4">
+      <div className="h-[25vh] md:h-full md:w-1/3 bg-white p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 shrink-0 shadow-2xl z-20">
         <div className="flex flex-row md:flex-col items-center gap-4">
-          <div className="w-24 h-24 md:w-56 md:h-56 rounded-full overflow-hidden border-4 border-white shadow-2xl bg-white">
-            <img src={character.avatarUrl} className="w-full h-full object-cover" />
-          </div>
+          <img src={character.avatarUrl} className="w-24 h-24 md:w-56 md:h-56 rounded-full border-4 border-emerald-100 object-cover shadow-xl" />
           <div className="text-left md:text-center">
             <h2 className="text-xl md:text-2xl font-black text-slate-800 italic">Xuân 🥤</h2>
-            <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest animate-pulse">{t.ui_status}</p>
+            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest animate-pulse">Đang sẵn sàng tư vấn</span>
           </div>
         </div>
         <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} 
-          className={`w-16 h-16 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-600 shadow-emerald-200'}`}>
+          className={`w-16 h-16 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-600'}`}>
           {isRecording ? <MicOff size={32} color="white" /> : <Mic size={32} color="white" />}
         </button>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 bg-white flex flex-col overflow-hidden relative">
-        <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm z-10">
-           <span className="font-black text-emerald-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
-           <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1 uppercase">
-             <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+      <div className="flex-1 bg-white flex flex-col overflow-hidden relative shadow-inner">
+        <div className="px-6 py-4 border-b flex justify-between items-center bg-white z-10">
+           <span className="font-black text-emerald-600 text-xs uppercase tracking-widest">Học giao tiếp Tiếng Việt thực tế</span>
+           <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full text-[10px] font-black flex items-center gap-2">
+             <Gauge size={14}/> {speechRate === 1.0 ? 'TỐC ĐỘ THƯỜNG' : 'TỐC ĐỘ CHẬM'}
            </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-emerald-50/10 custom-scrollbar">
-          {messages.map((msg) => {
-            const parts = msg.text.split('|');
-            const viText = parts[0]?.trim();
-            const transText = parts[1]?.trim();
-            const isActive = activeVoiceId === msg.id;
-
-            return (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm relative transition-all ${isActive ? 'ring-4 ring-emerald-100 scale-[1.02]' : ''} ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-50'}`}>
-                  <div className="flex flex-col">
-                    <div className="text-sm md:text-lg font-bold leading-tight flex items-start gap-2">
-                      <span className="flex-1">{msg.role === 'ai' ? renderInteractiveText(viText) : viText}</span>
-                      <button onClick={() => speakWord(msg.text, msg.id)} className={`mt-1 p-1 rounded-full transition-colors ${msg.role === 'user' ? 'hover:bg-emerald-500 text-emerald-200' : 'hover:bg-emerald-50 text-emerald-600'}`}>
-                        <Volume2 size={18}/>
-                      </button>
-                    </div>
-                    {transText && (
-                      <div className={`mt-2 pt-2 border-t text-[11px] md:text-xs italic opacity-80 font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-100 text-slate-500'}`}>
-                        {transText}
-                      </div>
-                    )}
-                  </div>
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm relative transition-all ${activeVoiceId === msg.id ? 'ring-4 ring-emerald-100 scale-[1.01]' : ''} ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-emerald-50 rounded-tl-none shadow-md'}`}>
+                <div className="text-sm md:text-lg font-bold leading-relaxed flex items-start gap-3">
+                  <span className="flex-1">{msg.role === 'ai' ? renderInteractiveText(msg.text) : msg.text}</span>
+                  <button onClick={() => speakWord(msg.text, msg.id)} className={`mt-1 p-2 rounded-full transition-colors ${msg.role === 'user' ? 'hover:bg-emerald-500 text-emerald-100' : 'hover:bg-emerald-50 text-emerald-600'}`}>
+                    <Volume2 size={20}/>
+                  </button>
                 </div>
               </div>
-            );
-          })}
-          {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse uppercase tracking-widest italic">Xuân đang chọn trái cây tươi...</div>}
+            </div>
+          ))}
+          {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse uppercase tracking-widest italic ml-4">Xuân đang nghe Anh...</div>}
           <div ref={chatEndRef} />
         </div>
 
-        {/* Input */}
-        <div className="p-4 md:p-6 bg-white border-t border-slate-50 flex gap-3 pb-10 md:pb-6">
+        <div className="p-4 md:p-8 bg-white border-t border-slate-50 flex gap-4 pb-12 md:pb-8">
           <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)}
-            placeholder={t.ui_placeholder} className="flex-1 bg-slate-50 px-5 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-emerald-100 focus:bg-white transition-all" />
-          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-2xl shadow-lg hover:bg-emerald-600 transition-all shadow-emerald-100"><Send size={20}/></button>
+            placeholder="Nhắn tin cho Xuân..." className="flex-1 bg-slate-50 px-6 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-emerald-100 focus:bg-white transition-all shadow-inner" />
+          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-8 rounded-2xl shadow-lg hover:bg-emerald-600 transition-all active:scale-95"><Send size={20}/></button>
         </div>
       </div>
+
+      <button onClick={toggleFullscreen} className="absolute bottom-4 right-4 p-3 bg-white/20 rounded-full text-white backdrop-blur-md opacity-30 hover:opacity-100 transition-all z-50">
+        {isFullscreen ? <Minimize size={20}/> : <Maximize size={20}/>}
+      </button>
     </div>
   );
 };
