@@ -1,45 +1,56 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-import { GoogleGenAI } from '@google/genai';
-
-// This list contains 10 unique API keys to handle higher user load.
-const GEMINI_API_KEYS = [
-   
-];
+// Lấy danh sách Keys từ biến môi trường để bảo mật
+const GEMINI_API_KEYS: string[] = [
+    import.meta.env.VITE_GEMINI_KEY_1 || '',
+    import.meta.env.VITE_GEMINI_KEY_2 || '',
+    import.meta.env.VITE_GEMINI_KEY_3 || '',
+    import.meta.env.VITE_GEMINI_KEY_4 || '',
+    import.meta.env.VITE_GEMINI_KEY_5 || '',
+    import.meta.env.VITE_GEMINI_KEY_6 || '',
+    import.meta.env.VITE_GEMINI_KEY_7 || '',
+    import.meta.env.VITE_GEMINI_KEY_8 || '',
+    import.meta.env.VITE_GEMINI_KEY_9 || '',
+    import.meta.env.VITE_GEMINI_KEY_10 || '',
+].filter(key => key !== ''); // Chỉ giữ lại các key có giá trị
 
 let currentApiKeyIndex = 0;
 
-export const generateContentWithRetry = async (payload: any) => {
-    let lastError: any;
-    let delay = 1000; // Initial 1-second delay for rate limit errors.
+export const generateContentWithRetry = async (modelName: string, prompt: string) => {
+    if (GEMINI_API_KEYS.length === 0) {
+        console.error("No API Keys found. Please check your Environment Variables.");
+        throw new Error("Cấu hình API Key chưa đúng. Vui lòng kiểm tra lại.");
+    }
 
-    // Try each key once for a given request before failing.
+    let lastError: any;
+    let delay = 1000;
+
     for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-        // Start from the current index and wrap around the array.
         const keyIndex = (currentApiKeyIndex + i) % GEMINI_API_KEYS.length;
         const apiKey = GEMINI_API_KEYS[keyIndex];
         
         try {
-            const ai = new GoogleGenAI({ apiKey });
-            // Assuming payload contains model, contents, config etc.
-            const response = await ai.models.generateContent(payload);
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: modelName });
             
-            // On success, set the next call to start with the subsequent key to distribute load.
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            
+            // Thành công: Cập nhật index cho lần gọi sau
             currentApiKeyIndex = (keyIndex + 1) % GEMINI_API_KEYS.length;
+            return response.text(); 
             
-            return response; // Success
         } catch (error: any) {
-            console.error(`API call with key index ${keyIndex} failed. Retries left: ${GEMINI_API_KEYS.length - 1 - i}`, error.message);
+            console.warn(`Key index ${keyIndex} thất bại: ${error.message}`);
             lastError = error;
-            
-            // If it's a rate limit error (429), wait before trying the next key.
-            if (String(error).includes('429')) {
+
+            // Nếu gặp lỗi giới hạn (429), chờ rồi thử key tiếp theo
+            if (error.message?.includes('429') || JSON.stringify(error).includes('429')) {
                 await new Promise(res => setTimeout(res, delay));
-                delay *= 2; // Exponential backoff for subsequent rate limit errors in the same request.
+                delay *= 2; 
             }
-            // For other errors, we'll immediately try the next key in the next iteration.
         }
     }
 
-    // If all retries across all keys fail, throw the last encountered error.
-    throw lastError || new Error("All Gemini API retries failed across all available keys.");
+    throw lastError || new Error("Tất cả API keys đều thất bại.");
 };
