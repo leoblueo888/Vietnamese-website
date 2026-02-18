@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
-import type { AIFriend } from '../types';
 
 // --- DICTIONARY DATA ---
 const DICTIONARY = {
@@ -61,7 +60,8 @@ const LANGUAGES = {
   }
 };
 
-export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) => {
+// ĐỔI TÊN THÀNH GameSpeakAISmoothie VÀ THÊM EXPORT ĐỂ KHỚP VỚI IMPORT
+export const GameSpeakAISmoothie: React.FC<any> = ({ character }) => {
   const [gameState, setGameState] = useState('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
@@ -80,7 +80,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
   const XUAN_IMAGE_URL = "https://images.unsplash.com/photo-1595152772835-219674b2a8a6?q=80&w=200&auto=format&fit=crop";
   const t = LANGUAGES[selectedLang];
 
-  // --- FULLSCREEN LOGIC ---
   useEffect(() => {
     const handleFs = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFs);
@@ -95,7 +94,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
     }
   };
 
-  // --- SPEECH RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -111,7 +109,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
     }
   }, []);
 
-  // --- GOOGLE TTS LOGIC (STILL USING GOOGLE) ---
   const speakWord = async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
@@ -124,7 +121,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
       audioRef.current.onended = () => { setActiveVoiceId(null); resolve(); };
       audioRef.current.onerror = () => { setActiveVoiceId(null); resolve(); };
       audioRef.current.play().catch(() => {
-          // Fallback if Google fails
           const ut = new SpeechSynthesisUtterance(cleanText);
           ut.lang = 'vi-VN';
           ut.rate = speechRate;
@@ -142,7 +138,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
     audio.play().catch(console.error);
   };
 
-  // --- CORE AI LOGIC (REPLACED WITH /API/CHAT) ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -169,7 +164,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
         setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
         await speakWord(data.text, aiMsgId);
 
-        // Logic "Phục vụ đồ uống" sau 5s nếu AI nói sẽ mang tới ngay
         if (data.text.toLowerCase().includes("mang đồ uống tới ngay") || data.text.toLowerCase().includes("ngồi đợi")) {
           setTimeout(async () => {
              const svMsgId = `ai-sv-${Date.now()}`;
@@ -187,7 +181,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
     }
   };
 
-  // --- DICTIONARY RENDERER ---
   const renderInteractiveText = (text: string) => {
     if (!text) return null;
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
@@ -228,7 +221,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // --- UI RENDER ---
   if (gameState === 'start') {
     return (
       <div className="w-full h-full bg-blue-50 flex items-center justify-center p-4">
@@ -239,9 +231,9 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
           <h1 className="text-3xl font-black text-blue-600 mb-2 italic">Xuân's Healthy Bar 🥤</h1>
           <p className="text-slate-400 mb-8 italic">{t.ui_welcome}</p>
           <div className="flex gap-4 justify-center mb-8">
-             {['EN', 'RU'].map(l => (
+              {['EN', 'RU'].map(l => (
                <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-6 py-2 rounded-xl font-bold transition-all ${selectedLang === l ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-400'}`}>{LANGUAGES[l as 'EN'|'RU'].label}</button>
-             ))}
+              ))}
           </div>
           <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl hover:scale-105 active:scale-95 transition-all">
             {t.ui_start}
@@ -254,8 +246,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
   return (
     <div className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden">
       <div className="w-full h-full max-w-6xl bg-white md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border-0 md:border-[10px] border-blue-50">
-        
-        {/* SIDEBAR */}
         <div className="h-[20vh] md:h-full md:w-1/3 bg-blue-50/40 p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-blue-100 shrink-0">
           <div className="flex flex-row md:flex-col items-center gap-4">
             <div className="h-24 w-24 md:w-56 md:h-56 rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xl border-4 border-white shrink-0">
@@ -271,7 +261,6 @@ export const GameSmoothie: React.FC<{ character: AIFriend }> = ({ character }) =
           </button>
         </div>
 
-        {/* CHAT AREA */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between shrink-0">
             <div className="flex flex-col">
