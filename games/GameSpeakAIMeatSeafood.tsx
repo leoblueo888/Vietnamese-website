@@ -55,7 +55,7 @@ const LANGUAGES = {
   }
 };
 
-export const GameSpeakAIMeatseafood: React.FC<{ character: AIFriend }> = ({ character }) => {
+export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }) => {
   const [gameState, setGameState] = useState('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
