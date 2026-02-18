@@ -21,8 +21,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+- name: Install dependencies
+        # Thêm lệnh cài đặt thư viện Google AI trực tiếp ở đây
+        run: |
+          npm install --legacy-peer-deps
+          npm install @google/generative-ai --legacy-peer-deps
 
       - name: Build
         # Đây là phần quan trọng nhất để nạp "não" cho AI mà không bị lộ Key
