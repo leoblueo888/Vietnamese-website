@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"] # Robot sẽ chạy mỗi khi ông nhấn Commit ở nhánh main
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -20,10 +20,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Đã xóa dòng cache: 'npm' để tránh lỗi lock file
 
       - name: Install dependencies
-        run: npm install
+        # Dùng --no-package-lock để nó cài đặt dựa thuần túy trên file package.json của ông
+        run: npm install --no-package-lock
 
       - name: Build
         run: npm run build
