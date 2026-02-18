@@ -1,10 +1,10 @@
-import React, {useEffect} from 'react';
+import React, { useEffect } from 'react';
 import { getGrammarLevels } from '../constants';
 import { GrammarASA } from '../games/GrammarASA';
 import { GrammarAQB } from '../games/GrammarAQB';
 import { GrammarLSA } from '../games/GrammarLSA';
 import { GrammarLQA } from '../games/GrammarLQA';
-import { Language, AuthMode } from '../App';
+import { Language } from '../App';
 import { translations } from '../translations';
 import { Lock } from 'lucide-react';
 
@@ -18,7 +18,7 @@ export interface Topic {
   thumbnailUrl?: string;
 }
 
-const GrammarCard: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0]; onClick: () => void; lang: Language }> = ({ level, onClick, lang }) => {
+const GrammarCard: React.FC<{ level: any; onClick: () => void; lang: Language }> = ({ level, onClick, lang }) => {
   const t = translations[lang].grammarPage;
   return (
     <div 
@@ -70,7 +70,8 @@ const TopicCard: React.FC<{ topic: Topic; onSelect: () => void }> = ({ topic, on
           alt={topic.name} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-xl ${topic.overlayColor} backdrop-blur-[2px] border border-white/50 shadow-sm`}><br>           <span className="text-slate-800 font-black text-center block text-sm tracking-tight whitespace-nowrap">
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-xl ${topic.overlayColor} backdrop-blur-[2px] border border-white/50 shadow-sm`}>
+           <span className="text-slate-800 font-black text-center block text-sm tracking-tight whitespace-nowrap">
              {topic.name}
            </span>
         </div>
@@ -90,7 +91,7 @@ const TopicCard: React.FC<{ topic: Topic; onSelect: () => void }> = ({ topic, on
   );
 };
 
-const LevelDetailView: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0]; onBack: () => void; onSelectTopic: (topic: Topic) => void }> = ({ level, onBack, onSelectTopic }) => {
+const LevelDetailView: React.FC<{ level: any; onBack: () => void; onSelectTopic: (topic: Topic) => void }> = ({ level, onBack, onSelectTopic }) => {
   useEffect(() => {
     const startTime = performance.now();
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzrjpM8XAN2ktEW19NS87T_x5NlYNYjWt9srSu5XHfTw9IV_mCzrkWhPP8C1EBPC7Y/exec';
@@ -141,7 +142,7 @@ const LevelDetailView: React.FC<{ level: ReturnType<typeof getGrammarLevels>[0];
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {level.topics.map((topic) => (
+        {level.topics && level.topics.map((topic: Topic) => (
           <TopicCard key={topic.id} topic={topic} onSelect={() => onSelectTopic(topic)} />
         ))}
       </div>
@@ -163,8 +164,6 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
   const t = translations[language];
   const grammarLevels = getGrammarLevels(language);
   const currentLevel = grammarLevels.find(l => l.badge === focusedLevel);
-
-  // Danh sách mở khóa sẽ được điều khiển bởi OPEN_LESSON_IDS ở App.tsx
   const freeLevelsForGuest = ['ASA', 'AQA']; 
 
   return (
@@ -199,7 +198,7 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
           <div className="mb-20 max-w-5xl mx-auto">
               <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-100">
                   <img 
-                      src={language === 'ru' ? 'https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200' : 'https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200'} 
+                      src="https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200" 
                       alt="Grammar learning banner" 
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
