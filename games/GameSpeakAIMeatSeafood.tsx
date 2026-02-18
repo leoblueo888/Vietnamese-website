@@ -55,7 +55,7 @@ const LANGUAGES = {
   }
 };
 
-export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }) => {
+export const GameSpeakAIMeatseafood: React.FC<{ character: AIFriend }> = ({ character }) => {
   const [gameState, setGameState] = useState('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
@@ -108,7 +108,10 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
   // --- TTS LOGIC ---
   const speak = async (text: string, msgId: string | null = null) => {
     if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].replace(/(\d+)\.000/g, '$1 nghìn').trim();
+    let cleanText = text.split('|')[0].trim();
+    // Format price for more natural speech
+    cleanText = cleanText.replace(/(\d+)\.000/g, '$1 nghìn').replace(/(\d+)k/gi, '$1 nghìn');
+    
     if(!cleanText) return;
     
     return new Promise<void>(resolve => {
@@ -138,7 +141,7 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
         body: JSON.stringify({ 
           message: text, 
           lang: selectedLang.toLowerCase(),
-          topic: "Thanh, a 25-year-old expert merchant at a Vietnamese market selling meat and seafood. Follow sales order: 1. Ask what they want 2. Ask how many kilos 3. Give price and advice." 
+          topic: "Thanh, a 25-year-old expert merchant at a Vietnamese market selling meat and seafood. Be energetic, friendly, use 'Anh/Chị' and 'Em'. Sales flow: 1. Greet & Ask what they need 2. Suggest fresh items today 3. Give price and cooking advice." 
         })
       });
 
@@ -210,21 +213,21 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
 
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-[#f0f9ff] flex items-center justify-center p-4">
+      <div className="w-full h-full bg-[#f0f9ff] flex items-center justify-center p-4 min-h-[500px]">
         <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-emerald-50">
           <div className="w-48 h-48 mx-auto mb-6 rounded-3xl overflow-hidden shadow-lg border-4 border-white rotate-3">
             <img src={character.avatarUrl} alt="Thanh" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-4xl font-black text-emerald-800 mb-2 uppercase tracking-tighter italic">Thanh's Fresh 🦀</h1>
-          <p className="text-slate-400 mb-8 font-medium">{t.ui_welcome}</p>
+          <p className="text-slate-400 mb-8 font-medium italic">{t.ui_welcome}</p>
           <div className="flex gap-4 justify-center mb-10">
             {['EN', 'RU'].map(l => (
-              <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-emerald-600 text-white shadow-xl scale-105' : 'bg-slate-100 text-slate-400'}`}>
+              <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-emerald-600 text-white shadow-xl scale-105' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                 {LANGUAGES[l as 'EN' | 'RU'].label}
               </button>
             ))}
           </div>
-          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="group relative w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
+          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="group relative w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95">
             <Play fill="white" /> {t.ui_start}
           </button>
         </div>
@@ -233,7 +236,7 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
   }
 
   return (
-    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative">
+    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative min-h-[600px]">
       <div className="w-full h-full max-w-7xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl border-0 md:border-[10px] border-emerald-50/30">
         
         {/* SIDEBAR */}
@@ -259,7 +262,7 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
 
         {/* CHAT AREA */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
-          <header className="px-8 py-5 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
+          <header className="px-8 py-5 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-md z-10 shadow-sm">
             <div>
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
               <div className="flex items-center gap-2 mt-1">
@@ -279,7 +282,7 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
               const isActive = activeVoiceId === msg.id;
               return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-5 md:p-8 rounded-[2.5rem] transition-all duration-300 shadow-sm ${isActive ? 'ring-4 ring-emerald-100 scale-[1.02] shadow-xl' : ''} ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-50'}`}>
+                  <div className={`max-w-[85%] p-5 md:p-8 rounded-[2.5rem] transition-all duration-300 shadow-sm ${isActive ? 'ring-4 ring-emerald-100 scale-[1.01] shadow-xl' : ''} ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-50'}`}>
                     <div className="flex items-start justify-between gap-6">
                       <div className="text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : parts[0]}</div>
                       <button onClick={() => speak(msg.text, msg.id)} className={`p-3 rounded-2xl transition-colors ${msg.role === 'user' ? 'bg-emerald-600/50 text-white hover:bg-emerald-500' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}><Volume2 size={20}/></button>
@@ -292,7 +295,7 @@ export const GameMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }
             <div ref={chatEndRef} />
           </div>
 
-          <footer className="p-6 md:p-10 bg-white border-t border-slate-50 flex gap-4">
+          <footer className="p-6 md:p-10 bg-white border-t border-slate-100 flex gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
             <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg transition-all focus:bg-white focus:ring-4 ring-emerald-50 placeholder:text-slate-300 shadow-inner" />
             <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"><Send size={24}/></button>
           </footer>
