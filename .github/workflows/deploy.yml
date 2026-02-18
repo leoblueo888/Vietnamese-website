@@ -24,7 +24,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install --legacy-peer-deps
-          npm install @google/generative-ai --legacy-peer-deps
+          # Ép hệ thống cài bản mới nhất để hỗ trợ Gemini 2.5 Flash
+          npm install @google/generative-ai@latest --legacy-peer-deps
 
       - name: Build
         run: npx vite build
