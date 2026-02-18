@@ -116,7 +116,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
 
         try {
             const response = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.5-flash',
                 contents: currentHistory.map(m => ({
                     role: m.role === 'ai' ? 'model' : 'user',
                     parts: [{ text: m.text.split('|')[0] }]
