@@ -1,47 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, Gauge, Maximize, Minimize } from 'lucide-react';
 import type { AIFriend } from '../types';
 
-// --- DICTIONARY: TỪ VỰNG QUÁN NƯỚC ---
+// --- DICTIONARY: THỰC ĐƠN SINH TỐ & SỨC KHỎE ---
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
-  "nước ép": { EN: "fruit juice", type: "Noun" },
   "sinh tố": { EN: "smoothie", type: "Noun" },
-  "cà phê": { EN: "coffee", type: "Noun" },
+  "nước ép": { EN: "juice", type: "Noun" },
+  "táo": { EN: "apple", type: "Noun" },
+  "cà rốt": { EN: "carrot", type: "Noun" },
+  "bơ": { EN: "avocado", type: "Noun" },
+  "cần tây": { EN: "celery", type: "Noun" },
+  "đẹp da": { EN: "good for skin", type: "Adj" },
+  "giảm cân": { EN: "lose weight", type: "Verb" },
+  "năng lượng": { EN: "energy", type: "Noun" },
+  "ít đường": { EN: "less sugar", type: "Adj" },
   "đá": { EN: "ice", type: "Noun" },
-  "đường": { EN: "sugar", type: "Noun" },
-  "sữa": { EN: "milk", type: "Noun" },
-  "trái cây": { EN: "fruit", type: "Noun" },
-  "thực đơn": { EN: "menu", type: "Noun" },
-  "ngon": { EN: "delicious", type: "Adj" },
-  "mát": { EN: "cool / refreshing", type: "Adj" },
-  "tươi": { EN: "fresh", type: "Adj" },
-  "ít đá": { EN: "less ice", type: "Noun" },
-  "nhiều đá": { EN: "more ice", type: "Noun" },
-  "tại đây": { EN: "dine-in", type: "Adv" },
-  "mang đi": { EN: "to-go / takeaway", type: "Adv" }
+  "sức khỏe": { EN: "health", type: "Noun" },
+  "tư vấn": { EN: "to advise", type: "Verb" }
 };
 
 const LANGUAGES = {
   EN: {
     label: "English",
-    ui_welcome: "Welcome to my juice bar! I'm Xuan.",
+    ui_welcome: "Welcome to Xuan's Healthy Bar! I'm Xuan.",
     ui_start: "ORDER NOW",
-    ui_placeholder: "Talk to Xuan here...",
-    ui_listening: "Xuan is listening...",
-    ui_status: "Online - Barista Mode",
+    ui_placeholder: "Ask Xuan for a healthy drink...",
+    ui_status: "Online - Nutrition Expert",
     ui_learning_title: "Chat with Xuan Barista",
-    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? ✨ | Hi! Welcome. Would you like a juice or a smoothie today? ✨",
+    welcome_msg: "Em chào Anh! Anh muốn tìm nước ép hay sinh tố tốt cho sức khỏe ạ? Em có thể tư vấn cho Anh nha! ✨ | Hi! Would you like some healthy juice or a smoothie? I can give you some advice! ✨",
     systemPromptLang: "English"
   },
   RU: {
     label: "Русский",
-    ui_welcome: "Добро пожаловать! Я Суан, ваш бариста.",
-    ui_start: "ЗАKAЗАТЬ",
-    ui_placeholder: "Поговори с Суан здесь...",
-    ui_listening: "Суан слушает...",
-    ui_status: "В сети - Бариста",
-    ui_learning_title: "Общение với бариста",
-    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? ✨ | Здравствуйте! Какой сок или смузи вы бы хотели сегодня? ✨",
+    ui_welcome: "Добро пожаловать в Healthy Bar у Сюань!",
+    ui_start: "ЗАКАЗАТЬ",
+    ui_placeholder: "Спроси Сюань о напитках...",
+    ui_status: "Online - Эксперт",
+    ui_learning_title: "Trò chuyện với Xuân",
+    welcome_msg: "Em chào Anh! Anh muốn tìm nước ép hay sinh tố tốt cho sức khỏe ạ? Em tư vấn cho Anh nhé! ✨ | Здравствуйте! Хотите сок или смузи? Я могу вам посоветовать! ✨",
     systemPromptLang: "Russian"
   }
 };
@@ -58,28 +54,26 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
 
-  const XUAN_IMAGE_URL = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=400&auto=format&fit=crop";
   const t = LANGUAGES[selectedLang];
 
-  // --- XỬ LÝ FULLSCREEN ---
-  useEffect(() => {
-    const handleFs = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handleFs);
-    return () => document.removeEventListener('fullscreenchange', handleFs);
-  }, []);
-
-  const toggleFullscreen = () => {
-    if (!gameContainerRef.current) return;
-    if (!document.fullscreenElement) gameContainerRef.current.requestFullscreen();
-    else document.exitFullscreen();
+  // --- TTS TRÌNH DUYỆT (FIX LỖI SOURCE) ---
+  const speakWord = (text: string, msgId: string | null = null) => {
+    if (!text) return;
+    if (msgId) setActiveVoiceId(msgId);
+    window.speechSynthesis.cancel();
+    const cleanText = text.split('|')[0].replace(/[*]/g, '').trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'vi-VN';
+    utterance.rate = speechRate;
+    utterance.onend = () => setActiveVoiceId(null);
+    window.speechSynthesis.speak(utterance);
   };
 
-  // --- NHẬN DIỆN GIỌNG NÓI ---
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -95,22 +89,9 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [selectedLang]);
+  }, []);
 
-  // --- PHÁT ÂM TIẾNG VIỆT ---
-  const speakWord = async (text: string, msgId: string | null = null) => {
-    if (!text) return;
-    if (msgId) setActiveVoiceId(msgId);
-    // Chỉ lấy phần tiếng Việt trước dấu | để đọc
-    const cleanText = text.split('|')[0].replace(/[*]/g, '').trim();
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-    audioRef.current.src = url;
-    audioRef.current.playbackRate = speechRate;
-    audioRef.current.play().catch(console.error);
-    audioRef.current.onended = () => setActiveVoiceId(null);
-  };
-
-  // --- GỬI TIN NHẮN & GỌI AI ---
+  // --- AI BRIDGE (NHẬN DIỆN NHÂN VẬT XUÂN) ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -128,12 +109,13 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
           message: text,
           lang: selectedLang.toLowerCase(),
           systemPrompt: `
-            You are Xuân, a 20-year-old barista. Use "Dạ", "ạ", "Anh" and "Em".
-            FORMAT: Vietnamese | ${t.systemPromptLang} Translation.
-            RULE 1: ALWAYS respond in Vietnamese first.
-            RULE 2: Use the "|" character to separate Vietnamese and the translation.
-            RULE 3: If the user orders a drink, ask "ít đá hay nhiều đá?". 
-            RULE 4: Then ask "uống tại đây hay mang đi?".
+            BỐN CẢNH: Bạn tên là Xuân, 22 tuổi, là chuyên gia pha chế sinh tố và nước ép sức khỏe.
+            TÍNH CÁCH: Vui vẻ, nhiệt tình, xưng "Em" gọi "Anh".
+            NHIỆM VỤ: 
+            1. Tư vấn đồ uống dựa trên nhu cầu khách (vd: đẹp da thì dùng cà rốt/cà chua, mệt mỏi thì dùng nước cam/táo, thanh lọc cơ thể thì dùng cần tây).
+            2. Trả lời ngắn gọn, tự nhiên như người bán hàng thật sự.
+            3. TUYỆT ĐỐI KHÔNG giải thích ngữ pháp hay dịch thuật dài dòng.
+            ĐỊNH DẠNG: Tiếng Việt | ${t.systemPromptLang} Translation.
           `
         })
       });
@@ -145,17 +127,15 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
         speakWord(data.text, aiMsgId);
       }
     } catch (e) {
-      console.error("Lỗi gọi API:", e);
+      console.error("API Error:", e);
     } finally {
       setIsThinking(false);
       isProcessingRef.current = false;
     }
   };
 
-  // --- TỰ ĐỘNG CUỘN XUỐNG ---
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // --- HIỂN THỊ TỪ ĐIỂN KHI DI CHUỘT ---
   const renderInteractiveText = (text: string) => {
     if (!text) return null;
     const words = text.split(/(\s+)/);
@@ -164,10 +144,10 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       const entry = DICTIONARY[cleanWord];
       if (entry) {
         return (
-          <span key={idx} className="group relative border-b border-dotted border-blue-300 cursor-help text-blue-700">
+          <span key={idx} className="group relative border-b border-dotted border-emerald-300 cursor-help text-emerald-700 font-medium">
             {word}
             <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg shadow-xl z-50 w-max">
-              {entry.EN} ({entry.type})
+              {entry.EN}
             </span>
           </span>
         );
@@ -178,19 +158,19 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
 
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-blue-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-blue-100">
-          <img src={XUAN_IMAGE_URL} className="w-40 h-40 mx-auto mb-6 rounded-full border-4 border-blue-400 object-cover shadow-lg" />
-          <h1 className="text-3xl font-black text-blue-700 mb-2 uppercase italic">Xuân Barista 🥤</h1>
+      <div className="w-full h-full bg-emerald-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-emerald-100">
+          <img src={character.avatarUrl} className="w-40 h-40 mx-auto mb-6 rounded-full border-4 border-emerald-400 object-cover shadow-lg" />
+          <h1 className="text-3xl font-black text-emerald-700 mb-2 uppercase italic">Xuan's Smoothies 🌿</h1>
           <p className="text-slate-400 mb-8 font-medium italic">{t.ui_welcome}</p>
           <div className="flex flex-col gap-6 items-center">
             <div className="flex gap-3">
               {(['EN', 'RU'] as const).map(l => (
-                <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-2 rounded-xl font-bold transition-all ${selectedLang === l ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>{l}</button>
+                <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-2 rounded-xl font-bold transition-all ${selectedLang === l ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{l}</button>
               ))}
             </div>
             <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} 
-              className="bg-blue-600 text-white px-16 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 active:scale-95 transition-all uppercase tracking-widest">
+              className="bg-emerald-600 text-white px-16 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all uppercase tracking-widest">
               {t.ui_start}
             </button>
           </div>
@@ -200,38 +180,34 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   }
 
   return (
-    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex flex-col md:flex-row overflow-hidden md:p-4">
-      {/* Sidebar: Avatar & Mic */}
-      <div className="h-[25vh] md:h-full md:w-1/3 bg-blue-50 p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-blue-100 shrink-0">
+    <div ref={gameContainerRef} className="w-full h-full bg-[#0F172A] flex flex-col md:flex-row overflow-hidden md:p-4">
+      {/* Sidebar */}
+      <div className="h-[25vh] md:h-full md:w-1/3 bg-[#F8FAFC] p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-200 shrink-0">
         <div className="flex flex-row md:flex-col items-center gap-4">
-          <div className="w-24 h-24 md:w-56 md:h-56 rounded-3xl overflow-hidden border-4 border-white shadow-2xl bg-white">
-            <img src={XUAN_IMAGE_URL} className="w-full h-full object-cover" />
+          <div className="w-24 h-24 md:w-56 md:h-56 rounded-full overflow-hidden border-4 border-white shadow-2xl bg-white">
+            <img src={character.avatarUrl} className="w-full h-full object-cover" />
           </div>
           <div className="text-left md:text-center">
-            <h2 className="text-xl md:text-2xl font-black text-slate-800 italic">Xuân 🍓</h2>
+            <h2 className="text-xl md:text-2xl font-black text-slate-800 italic">Xuân 🥤</h2>
             <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest animate-pulse">{t.ui_status}</p>
           </div>
         </div>
-        
         <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} 
-          className={`w-16 h-16 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}>
+          className={`w-16 h-16 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-600 shadow-emerald-200'}`}>
           {isRecording ? <MicOff size={32} color="white" /> : <Mic size={32} color="white" />}
         </button>
       </div>
 
-      {/* Main Chat Area */}
+      {/* Chat Area */}
       <div className="flex-1 bg-white flex flex-col overflow-hidden relative">
         <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm z-10">
-           <span className="font-black text-blue-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
-           <div className="flex gap-2">
-             <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1 uppercase">
-               <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
-             </button>
-             <button onClick={handleSendMessage.bind(null, "Xóa hội thoại")} className="p-2 bg-slate-100 rounded-lg text-slate-400 hover:text-red-500 transition-colors"><Download size={14} /></button>
-           </div>
+           <span className="font-black text-emerald-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
+           <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1 uppercase">
+             <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-blue-50/10 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-emerald-50/10 custom-scrollbar">
           {messages.map((msg) => {
             const parts = msg.text.split('|');
             const viText = parts[0]?.trim();
@@ -240,16 +216,16 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
 
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm relative transition-all ${isActive ? 'ring-4 ring-blue-100' : ''} ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-blue-50'}`}>
+                <div className={`max-w-[85%] p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm relative transition-all ${isActive ? 'ring-4 ring-emerald-100 scale-[1.02]' : ''} ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-50'}`}>
                   <div className="flex flex-col">
-                    <div className="text-sm md:text-lg font-bold leading-tight">
-                      {msg.role === 'ai' ? renderInteractiveText(viText) : viText}
-                      <button onClick={() => speakWord(msg.text, msg.id)} className={`ml-3 p-1 rounded-full transition-colors ${msg.role === 'user' ? 'hover:bg-blue-500 text-blue-200' : 'hover:bg-blue-50 text-blue-600'}`}>
+                    <div className="text-sm md:text-lg font-bold leading-tight flex items-start gap-2">
+                      <span className="flex-1">{msg.role === 'ai' ? renderInteractiveText(viText) : viText}</span>
+                      <button onClick={() => speakWord(msg.text, msg.id)} className={`mt-1 p-1 rounded-full transition-colors ${msg.role === 'user' ? 'hover:bg-emerald-500 text-emerald-200' : 'hover:bg-emerald-50 text-emerald-600'}`}>
                         <Volume2 size={18}/>
                       </button>
                     </div>
                     {transText && (
-                      <div className={`mt-2 pt-2 border-t text-[11px] md:text-xs italic opacity-80 font-medium ${msg.role === 'user' ? 'border-blue-500 text-blue-100' : 'border-slate-100 text-slate-500'}`}>
+                      <div className={`mt-2 pt-2 border-t text-[11px] md:text-xs italic opacity-80 font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-100 text-slate-500'}`}>
                         {transText}
                       </div>
                     )}
@@ -258,29 +234,17 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
               </div>
             );
           })}
-          {isThinking && <div className="text-[10px] font-black text-blue-400 animate-pulse uppercase tracking-widest italic">Xuân đang pha đồ uống...</div>}
+          {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse uppercase tracking-widest italic">Xuân đang chọn trái cây tươi...</div>}
           <div ref={chatEndRef} />
         </div>
 
-        {/* Input area */}
+        {/* Input */}
         <div className="p-4 md:p-6 bg-white border-t border-slate-50 flex gap-3 pb-10 md:pb-6">
-          <input 
-            type="text" 
-            value={userInput} 
-            onChange={e => setUserInput(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)}
-            placeholder={t.ui_placeholder}
-            className="flex-1 bg-slate-50 px-5 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-blue-100 focus:bg-white transition-all" 
-          />
-          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-2xl shadow-lg hover:bg-emerald-600 active:scale-95 transition-all">
-            <Send size={20}/>
-          </button>
+          <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)}
+            placeholder={t.ui_placeholder} className="flex-1 bg-slate-50 px-5 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-emerald-100 focus:bg-white transition-all" />
+          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-2xl shadow-lg hover:bg-emerald-600 transition-all shadow-emerald-100"><Send size={20}/></button>
         </div>
       </div>
-
-      <button onClick={toggleFullscreen} className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full text-white backdrop-blur-md opacity-30 hover:opacity-100 transition-all">
-        {isFullscreen ? <Minimize size={16}/> : <Maximize size={16}/>}
-      </button>
     </div>
   );
 };
