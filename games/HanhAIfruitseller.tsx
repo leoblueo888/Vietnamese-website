@@ -44,7 +44,8 @@ const LANGUAGES = {
   }
 };
 
-export const GameFruitSeller: React.FC<{ character: AIFriend }> = ({ character }) => {
+// ĐÃ ĐỔI TÊN THÀNH HanhAIfruitseller ĐỂ KHỚP VỚI LỆNH IMPORT
+export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character }) => {
   const [gameState, setGameState] = useState('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
@@ -208,7 +209,6 @@ export const GameFruitSeller: React.FC<{ character: AIFriend }> = ({ character }
   return (
     <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative">
       <div className="w-full h-full max-w-6xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
-        {/* SIDEBAR */}
         <div className="h-[20vh] md:h-full md:w-1/3 bg-emerald-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-emerald-100 shrink-0">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <div className="relative">
@@ -225,7 +225,6 @@ export const GameFruitSeller: React.FC<{ character: AIFriend }> = ({ character }
           </button>
         </div>
 
-        {/* CHAT AREA */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
           <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-white z-10 shadow-sm">
             <div className="flex items-center gap-2">
