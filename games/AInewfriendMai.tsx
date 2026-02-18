@@ -152,7 +152,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{text: (m.text || "").split('|')[0].trim()}]
@@ -226,7 +226,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     if (!rawText.trim()) return rawText;
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash',
         contents: `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
       });
       return response.text?.trim() || rawText;
