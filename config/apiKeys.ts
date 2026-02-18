@@ -3,16 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 
 // This list contains 10 unique API keys to handle higher user load.
 const GEMINI_API_KEYS = [
-    'AIzaSyDv12mOHSTC76nmsdF-VhTWELl5ptIr1To',
-    'AIzaSyDv3dm0hukMsTbxmKUgWtR3Ku2EI-_L2_Q',
-    'AIzaSyDNZZT4_aerDVYOxNP3PlD_X1AoIGbQ6jY',
-    'AIzaSyDAigWoxM7Ryau__Htz1vPWqLc1ZfJ8Hnw',
-    'AIzaSyBzSDx_oN8U5ulbjVcH1gDzfg5kWFDOqCo',
-    'AIzaSyCHzMobEmXNb2Mn8OPFKMu20dBeR4uyNjY',
-    'AIzaSyCawV1ViZs91BYkyvEdPudIuD4vfJBeaXs',
-    'AIzaSyC2onvbQx9di3mj9jT3LUhegl6dPNQUbv8',
-    'AIzaSyBkOrgsWFowp3bK8iED7BQVBYRy-gbvLOo',
-    'AIzaSyC8L1YP_KVusVCxFoqmn6T3wI9ra_3nUVY',
+   
 ];
 
 let currentApiKeyIndex = 0;
