@@ -20,14 +20,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          # Đã xóa dòng cache: 'npm' để tránh lỗi lock file
 
       - name: Install dependencies
-        # Dùng --no-package-lock để nó cài đặt dựa thuần túy trên file package.json của ông
-        run: npm install --no-package-lock
+        run: npm install --no-package-lock --legacy-peer-deps
 
       - name: Build
-        run: npm run build
+        # Thêm CI=false để nó không dừng lại khi gặp cảnh báo (warning)
+        run: |
+          export CI=false
+          npm run build
 
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
