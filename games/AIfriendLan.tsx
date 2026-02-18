@@ -234,4 +234,4 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     );
 };
 
-export default ẢIiendLan;
+export default AIfriendLan;
