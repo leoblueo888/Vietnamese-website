@@ -53,7 +53,7 @@ const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
     FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]`;
 };
 
-export const GameLan: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
+export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
     const [gameState, setGameState] = useState('start');
     const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
     const [messages, setMessages] = useState<any[]>([]);
@@ -234,4 +234,4 @@ export const GameLan: React.FC<{ onBack?: () => void, topic?: string | null }> =
     );
 };
 
-export default GameLan;
+export default ẢIiendLan;
