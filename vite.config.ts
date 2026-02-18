@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Tự động điều chỉnh đường dẫn dựa trên môi trường deploy
-  base: process.env.VERCEL ? '/' : '/Vietnamese-website/',
+  // Dùng './' để nó tự tìm file trong cùng thư mục, 
+  // bất kể là GitHub Pages hay Vercel hay bất cứ đâu.
+  base: './', 
 })
