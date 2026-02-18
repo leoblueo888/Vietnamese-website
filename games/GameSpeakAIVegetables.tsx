@@ -1,10 +1,8 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Volume1, Gauge } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
 import type { AIFriend } from '../types';
 
-// Từ điển phân loại cho cửa hàng rau củ của Phương
+// --- DICTIONARY DATA ---
 const DICTIONARY = {
   "rau muống": { EN: "water spinach", type: "Noun" },
   "cà chua": { EN: "tomato", type: "Noun" },
@@ -52,55 +50,27 @@ const DICTIONARY = {
 const LANGUAGES = {
   EN: {
     label: "English",
-    ui_welcome: "Welcome to Phuong's Purple Market! I'm Phuong.",
+    ui_welcome: "Welcome to Phuong's Market! I'm Phuong.",
     ui_start: "SHOP NOW",
     ui_placeholder: "Talk to Phuong here...",
-    ui_recording: "LISTENING...",
-    ui_tapToTalk: "Tap to talk",
-    ui_listening: "Listening...",
-    ui_status: "Online - Expert",
-    ui_learning_title: "Chat with Phuong Seller",
-    ui_listen_all: "Listen All",
-    ui_download: "Download",
-    welcome_msg: "Em chào Anh! Rau củ nhà em hôm nay loại nào cũng có, tươi rói luôn ạ. Anh muốn mua gì về nấu cơm hay cần em tư vấn rau gì bổ sức khỏe không ạ? ✨ | Hi! Welcome. I have all kinds of veggies today, very fresh. Do you want to buy anything or need advice on healthy greens? ✨",
-    systemPromptLang: "English"
+    ui_status: "Online - Expert Seller",
+    ui_learning_title: "Chat with Phuong",
+    welcome_msg: "Em chào Anh! Rau củ nhà em hôm nay loại nào cũng có, tươi rói luôn ạ. Anh muốn mua gì về nấu cơm không ạ? ✨ | Hi! Welcome. I have all kinds of veggies today, very fresh. Do you want to buy anything? ✨",
   },
   RU: {
     label: "Русский",
-    ui_welcome: "Добро пожаловать в лавку Фуong!",
+    ui_welcome: "Добро пожаловать в лавку Фуонг!",
     ui_start: "КУПИТЬ",
     ui_placeholder: "Поговори с Фуонг здесь...",
-    ui_recording: "СЛУШАЮ...",
-    ui_tapToTalk: "Нажмите",
-    ui_listening: "Phuong nghe đây...",
-    ui_status: "Online - Эксперт",
+    ui_status: "В сети - Эксперт",
     ui_learning_title: "Trò chuyện với Phương",
-    ui_listen_all: "Nghe tất cả",
-    ui_download: "Tải xuống",
-    welcome_msg: "Em chào Anh! Rau củ tươi lắm, Anh xem mua gì ủng hộ em nhé! ✨ | Здравствуйте! Овощи rất tươi, mời Anh xem! ✨",
-    systemPromptLang: "Russian"
+    welcome_msg: "Em chào Anh! Rau củ tươi lắm, Anh xem mua gì ủng hộ em nhé! ✨ | Здравствуйте! Овощи очень свежие, посмотрите! ✨",
   }
 };
 
-const getSystemPrompt = (targetLangName: string) => `
-You are Phuong, a 20-year-old friendly, hardworking, and KNOWLEDGEABLE vegetable seller. 
-CONVERSATION LOGIC:
-1. Be concise and direct. Do not talk too much.
-2. In your FIRST response after the greeting, you MUST end with the question: "anh muốn rau củ gì ạ?".
-3. In your SECOND response (once the customer mentions a vegetable), you MUST ask: "anh mua mấy ký ạ?".
-4. For subsequent messages, adapt naturally to the customer's needs.
-
-KNOWLEDGE BASE:
-- You sell EVERY kind of vegetable and fruit found in Vietnam.
-- You know health benefits (Cà rốt: bổ mắt, Mướp đắng: giải nhiệt...). Only mention them if asked.
-- PRICE POLICY: Write prices as "number + nghìn" (e.g., 20 nghìn).
-
-Format: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]
-`;
-
-export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ character }) => {
-  const [gameState, setGameState] = useState('start'); 
-  const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN'); 
+export const GameVegetables: React.FC<{ character: AIFriend }> = ({ character }) => {
+  const [gameState, setGameState] = useState('start');
+  const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -113,10 +83,10 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<number | null>(null);
-  const apiKey = process.env.API_KEY; 
 
   const t = LANGUAGES[selectedLang];
 
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -124,7 +94,6 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-      recognition.onstart = () => { setIsRecording(true); setUserInput(""); };
       recognition.onresult = (event: any) => {
         if (isProcessingRef.current) return;
         let final = ""; let interim = "";
@@ -135,182 +104,180 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
         setUserInput(final || interim);
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = window.setTimeout(() => {
-          if ((final || interim).trim() && !isProcessingRef.current) {
-            recognition.stop(); handleSendMessage((final || interim).trim(), true);
+          const text = (final || interim).trim();
+          if (text && !isProcessingRef.current) {
+            recognition.stop();
+            handleSendMessage(text);
           }
-        }, 2000); 
+        }, 2000);
       };
-      recognition.onerror = () => setIsRecording(false);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
   }, [selectedLang]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  const cycleSpeechRate = () => {
-    setSpeechRate(prev => {
-        if (prev >= 1.2) return 0.8;
-        if (prev === 1.0) return 1.2;
-        if (prev === 0.8) return 1.0;
-        return 1.0;
-    });
-  };
-
+  // --- TTS GOOGLE TRANSLATE ---
   const speak = async (text: string, msgId: string | null = null) => {
     if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].replace(/(\d+)k/g, '$1 nghìn').trim();
-    if(!cleanText) {
-        if (msgId) setActiveVoiceId(null);
-        return;
-    }
+    if(!cleanText) return;
     
     return new Promise<void>(resolve => {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-        audioRef.current.src = url;
-        audioRef.current.playbackRate = speechRate;
-        audioRef.current.onended = () => {
-            if (msgId) setActiveVoiceId(null);
-            resolve();
-        };
-        audioRef.current.onerror = () => {
-            if (msgId) setActiveVoiceId(null);
-            resolve();
-        };
-        audioRef.current.play().catch(() => resolve());
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+      audioRef.current.src = url;
+      audioRef.current.playbackRate = speechRate;
+      audioRef.current.onended = () => { setActiveVoiceId(null); resolve(); };
+      audioRef.current.onerror = () => { setActiveVoiceId(null); resolve(); };
+      audioRef.current.play().catch(() => resolve());
     });
   };
-  
-  const downloadConversation = () => {
-      const content = messages.map(m => {
-          const role = m.role === 'ai' ? 'Phuong' : 'User';
-          const text = (m.displayedText || m.text).replace(/ \| /g, '\nTranslation: ');
-          return `[${role}]\n${text}`;
-      }).join('\n\n');
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'phuong-conversation.txt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-  };
 
-  const handleSendMessage = async (text: string, fromMic = false) => {
-    if (!text?.trim() || isProcessingRef.current) return;
+  // --- AI CORE (10 KEY PROXY) ---
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
     
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', displayedText: text.trim(), id: userMsgId, text: text.trim() }]);
+    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId }]);
     setUserInput("");
 
-    (async () => {
-      try {
-        const ai = new GoogleGenAI({apiKey});
-        const history = [...messages, { role: 'user', text: text.trim() }];
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: history.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text.split('|')[0] }] })),
-          config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
-        });
-        const aiText = response.text || "";
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: text, 
+          lang: selectedLang.toLowerCase(),
+          topic: "Phuong, a friendly vegetable seller at a Vietnamese market" 
+        })
+      });
+
+      const data = await response.json();
+      if (data.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(current => [...current, { role: 'ai', text: aiText, id: aiMsgId, displayedText: aiText }]);
-        speak(aiText, aiMsgId);
-      } catch (error) { console.error("Gemini Error:", error); } 
-      finally { setIsThinking(false); isProcessingRef.current = false; }
-    })();
+        setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
+        await speak(data.text, aiMsgId);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsThinking(false);
+      isProcessingRef.current = false;
+    }
   };
 
-  const toggleRecording = () => {
-    if (!recognitionRef.current) return;
-    isRecording ? recognitionRef.current.stop() : recognitionRef.current.start();
+  // --- DICTIONARY RENDER ---
+  const renderInteractiveText = (text: string) => {
+    if (!text) return null;
+    const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
+    let result: any[] = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      let match = null;
+      for (const key of sortedKeys) {
+        if (remaining.toLowerCase().startsWith(key)) {
+          match = { key, original: remaining.slice(0, key.length), info: (DICTIONARY as any)[key] };
+          break;
+        }
+      }
+
+      if (match) {
+        result.push(
+          <span key={remaining.length} className="group relative inline-block border-b border-dotted border-violet-300 hover:border-violet-500 cursor-help px-0.5">
+            {match.original}
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-800 text-white text-[10px] p-2 rounded-xl z-50">
+              <div className="font-black text-violet-400 uppercase text-[8px]">{match.info.type}</div>
+              <div className="font-bold">{match.info.EN}</div>
+            </span>
+          </span>
+        );
+        remaining = remaining.slice(match.original.length);
+      } else {
+        result.push(remaining[0]);
+        remaining = remaining.slice(1);
+      }
+    }
+    return result;
   };
-  
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-[#f3e8ff] flex items-center justify-center p-4 font-sans text-slate-800">
-        <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-8 md:p-12 border-4 border-violet-100 text-center">
-          <img src={character.avatarUrl} alt="Phuong" className="w-40 h-40 mb-6 rounded-full border-4 border-violet-400 object-cover mx-auto" />
-          <h1 className="text-3xl font-black text-violet-600 mb-2 uppercase italic">Phuong's Veggies 🥦</h1>
-          <p className="text-slate-400 mb-8 font-medium">{t.ui_welcome}</p>
-          <div className="flex flex-col items-center gap-6 w-full">
-            <div className="flex space-x-4">
-              {['EN', 'RU'].map(lang => (
-                <button key={lang} onClick={() => setSelectedLang(lang as 'EN' | 'RU')} className={`px-6 py-3 rounded-xl font-bold border-2 transition-all ${selectedLang === lang ? 'bg-violet-50 text-violet-600' : 'text-slate-400'}`}>
-                  {LANGUAGES[lang].label}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => { setMessages([{ role: 'ai', text: t.welcome_msg, displayedText: t.welcome_msg, id: 'init' }]); setGameState('playing'); speak(t.welcome_msg, 'init'); }} className="flex items-center gap-3 font-black py-4 px-12 rounded-2xl bg-violet-600 text-white hover:scale-105 transition-all shadow-lg">
-              <Play fill="white" size={18} /> <span className="text-lg tracking-widest">{t.ui_start}</span>
-            </button>
+      <div className="w-full h-full bg-[#f3e8ff] flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[10px] border-violet-50">
+          <img src={character.avatarUrl} alt="Phuong" className="w-40 h-40 mx-auto mb-6 rounded-full border-4 border-violet-400 object-cover" />
+          <h1 className="text-3xl font-black text-violet-600 mb-2 italic">Phuong's Market 🥦</h1>
+          <p className="text-slate-400 mb-8 italic">{t.ui_welcome}</p>
+          <div className="flex gap-4 justify-center mb-8">
+            {['EN', 'RU'].map(l => (
+              <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-6 py-2 rounded-xl font-bold ${selectedLang === l ? 'bg-violet-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
+                {LANGUAGES[l as 'EN' | 'RU'].label}
+              </button>
+            ))}
           </div>
+          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="w-full py-5 bg-violet-600 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-105 active:scale-95 transition-all">
+            {t.ui_start}
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full bg-[#0B0F19] flex items-center justify-center p-0 md:p-0 font-sans">
-      <div className="w-full h-full bg-white md:rounded-none shadow-2xl flex flex-col md:flex-row">
-        {/* Left Panel */}
-        <div className="h-[20vh] md:h-full w-full md:w-1/3 bg-[#F7F8FA] p-4 md:p-8 flex flex-row md:flex-col justify-between items-center rounded-t-2xl md:rounded-l-none md:rounded-tr-none border-b md:border-r border-slate-100 shrink-0">
-          <div className="flex flex-row md:flex-col items-center gap-4 text-center">
-            <img src={character.avatarUrl} alt="Phuong" className="w-20 h-20 md:w-48 md:h-48 rounded-2xl object-cover" />
-            <div>
+    <div className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative">
+      <div className="w-full h-full max-w-6xl bg-white md:rounded-[2.5rem] flex flex-col md:flex-row overflow-hidden border-0 md:border-[10px] border-violet-50">
+        
+        {/* SIDEBAR */}
+        <div className="h-[20vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-slate-100 shrink-0">
+          <div className="flex flex-row md:flex-col items-center gap-4">
+            <img src={character.avatarUrl} className="w-20 h-20 md:w-56 md:h-56 rounded-3xl border-4 border-white shadow-xl object-cover" alt="Phuong" />
+            <div className="text-left md:text-center">
               <h2 className="text-xl md:text-3xl font-black text-slate-800">Phương 🥦</h2>
-              <p className="font-bold text-xs text-green-500 uppercase tracking-widest">● ONLINE - EXPERT</p>
+              <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest">● {t.ui_status}</span>
             </div>
           </div>
-          <button onClick={toggleRecording} className={`w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-95 mt-0 md:mt-4 ${isRecording ? 'bg-red-500 ring-4 ring-red-100' : 'bg-[#7F56D9] hover:bg-[#6941C6]'}`}>
-            <Mic size={28} color="white" />
+          <button onClick={() => { setIsRecording(!isRecording); isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start(); }} className={`w-14 h-14 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-50' : 'bg-violet-600 shadow-xl'}`}>
+            <Mic color="white" size={30} />
           </button>
         </div>
 
-        {/* Right Panel */}
-        <div className="h-[80vh] md:h-full flex-1 flex flex-col bg-white rounded-b-2xl md:rounded-r-none overflow-hidden">
-          <header className="px-4 md:px-6 py-3 border-b border-slate-100 flex items-center justify-between">
+        {/* CHAT AREA */}
+        <div className="flex-1 flex flex-col bg-white overflow-hidden">
+          <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
             <div>
-              <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">{t.ui_learning_title}</h3>
-              <p className="font-bold text-violet-600 text-xs">EXPERT SELLER MODE</p>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
+              <div className="text-xs font-black text-violet-600 mt-1 uppercase">Expert Seller Mode 🥦</div>
             </div>
-            <div className="flex items-center gap-1 md:gap-2">
-              <button onClick={downloadConversation} className="p-2 bg-slate-100 text-slate-500 rounded-lg">
-                  <Download size={14} />
-              </button>
-              <button onClick={cycleSpeechRate} className="flex items-center gap-1 p-2 bg-slate-100 text-slate-500 rounded-lg font-bold text-[10px] w-20 justify-center">
-                  <Gauge size={14} /> {Math.round(speechRate * 100)}%
-              </button>
+            <div className="flex gap-2">
+               <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-1"><Gauge size={14}/> {Math.round(speechRate * 100)}%</button>
             </div>
           </header>
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 min-h-0">
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-violet-50/5">
             {messages.map((msg) => {
-              const parts = (msg.displayedText || msg.text).split('|');
+              const parts = msg.text.split('|');
+              const isActive = activeVoiceId === msg.id;
               return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${msg.role === 'user' ? 'bg-[#7F56D9] text-white' : 'bg-slate-50 text-slate-800'}`}>
-                    <p className="font-bold text-sm">{parts[0]}</p>
-                    {parts[1] && <p className="text-xs italic mt-2 pt-2 border-t border-black/10 opacity-80">{parts[1]}</p>}
+                  <div className={`max-w-[85%] p-4 md:p-6 rounded-[2rem] transition-all ${isActive ? 'ring-4 ring-violet-100 shadow-lg scale-[1.02]' : ''} ${msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-none shadow-md' : 'bg-white text-slate-800 rounded-tl-none border border-violet-50 shadow-sm'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="text-base font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : parts[0]}</div>
+                      <button onClick={() => speak(msg.text, msg.id)} className={`p-2 rounded-xl ${msg.role === 'user' ? 'text-violet-200 hover:bg-violet-500' : 'text-violet-600 hover:bg-violet-50'}`}><Volume2 size={18}/></button>
+                    </div>
+                    {parts[1] && <div className={`mt-2 pt-2 border-t text-[11px] italic font-medium ${msg.role === 'user' ? 'border-violet-500 text-violet-200' : 'border-slate-50 text-slate-400'}`}>{parts[1]}</div>}
                   </div>
                 </div>
               );
             })}
-            <div ref={chatEndRef}></div>
+            <div ref={chatEndRef} />
           </div>
-          <footer className="p-3 md:p-4 bg-white border-t border-slate-100 flex gap-3">
-            <input 
-              type="text" 
-              value={userInput} 
-              onChange={e => setUserInput(e.target.value)} 
-              onKeyPress={e => e.key === 'Enter' && handleSendMessage(userInput)} 
-              placeholder={t.ui_placeholder} 
-              className="flex-1 px-4 py-3 bg-slate-50 rounded-xl focus:outline-none" 
-            />
-            <button onClick={() => handleSendMessage(userInput)} className="bg-[#7F56D9] text-white px-5 rounded-xl"><Send /></button>
+
+          <footer className="p-4 md:p-8 bg-white border-t border-slate-50 flex gap-3">
+            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-6 py-4 bg-slate-50 rounded-2xl outline-none font-medium transition-all focus:bg-white focus:ring-2 ring-violet-100" />
+            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-violet-600 text-white px-6 rounded-2xl shadow-lg hover:bg-violet-700 transition-all disabled:opacity-50"><Send size={20}/></button>
           </footer>
         </div>
       </div>
