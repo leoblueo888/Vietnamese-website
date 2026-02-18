@@ -3,5 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/Vietnamese-website/', // TÊN REPO CỦA ÔNG PHẢI KHỚP Ở ĐÂY
+  // Tự động điều chỉnh đường dẫn dựa trên môi trường deploy
+  base: process.env.VERCEL ? '/' : '/Vietnamese-website/',
 })
