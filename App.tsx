@@ -31,7 +31,6 @@ export type AuthMode = 'signin' | 'signup';
 
 const SCRIPT_URL_CREDIT = 'https://script.google.com/macros/s/AKfycbzfPwTDzc5SJoftFcYo6OZk8w-GvLcF2EpFvPQk3HoYn-VU3Ey5Les6UC0EPfWqxv3c/exec';
 
-// --- WHITELIST: Guest luôn được vào các mục này ---
 const OPEN_LESSON_IDS = [
   'GameTetWishes', 'Vietnameseverb2',        
   'GrammarASA', 'ASA', 'GrammarAQA', 'AQA',   
@@ -53,20 +52,20 @@ const CreditModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignUp: ()
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999999] flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center relative shadow-xl border-4 border-yellow-300">
+      <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center relative shadow-xl border-4 border-yellow-300 animate-in zoom-in-95 duration-300">
         <button onClick={onClose} className="absolute top-3 right-3 p-2 text-slate-400 hover:text-slate-700 transition-colors"><X size={20} /></button>
-        <div className="text-yellow-500 mb-4"><Gift size={48} /></div>
+        <div className="text-yellow-500 flex justify-center mb-4"><Gift size={48} /></div>
         <h2 className="text-2xl font-bold text-slate-800 mb-3">Out of Credit!</h2>
         {isGuest ? (
           <>
-            <p className="text-slate-500 mb-6">You have used up your 300s trial. Sign up now to get 600s daily!</p>
-            <button onClick={onSignUp} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Sign Up Free</button>
+            <p className="text-slate-500 mb-6 font-medium">You have used up your trial. Sign up now to get 1000 credits and continue!</p>
+            <button onClick={onSignUp} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg">Sign Up Free</button>
           </>
         ) : (
           <>
-            <p className="text-slate-500 mb-6">Your 600s daily credit is over. Invite a friend to get a 1200s bonus for both!</p>
-            <button onClick={handleCopyLink} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-              <Copy size={16} /> {copied ? 'Copied!' : 'Copy Invite Link'}
+            <p className="text-slate-500 mb-6 font-medium">Your daily credit is over. Invite a friend to get a 1000 credits bonus for both!</p>
+            <button onClick={handleCopyLink} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-lg">
+              <Copy size={18} /> {copied ? 'Link Copied!' : 'Copy Invite Link'}
             </button>
           </>
         )}
@@ -119,7 +118,7 @@ const App: React.FC = () => {
 
     if (loggedIn) {
         const userCredit = localStorage.getItem('user_credit');
-        setCredit(userCredit ? parseInt(userCredit, 10) : 1200);
+        setCredit(userCredit ? parseInt(userCredit, 10) : 1000);
     } else {
         let guestCredit = localStorage.getItem('guest_credit') || '300';
         localStorage.setItem('guest_credit', guestCredit);
@@ -164,18 +163,22 @@ const App: React.FC = () => {
   const handleCloseAuthModal = () => { setAuthModal({ isOpen: false, mode: 'signin' }); };
   const handleSwitchAuthMode = (newMode: AuthMode) => { setAuthModal({ isOpen: true, mode: newMode }); };
 
-  // --- HÀM ĐIỀU HƯỚNG MỚI (FIX TRIỆT ĐỂ) ---
   const navigateTo = (newView: ViewType, data?: any) => {
     const targetId = data?.id || (typeof data === 'string' ? data : null);
     
-    // 1. Kiểm tra Whitelist ngay lập tức
+    // --- KHÓA GAME AI KHI HẾT CREDIT ---
+    const aiGameViews: ViewType[] = ['ai-friend-detail', 'real-life-ai-chat'];
+    if (aiGameViews.includes(newView) && credit <= 0) {
+      setIsCreditModalOpen(true);
+      return; 
+    }
+
     const isAllowed = OPEN_LESSON_IDS.some(id => 
       targetId === id || 
       (targetId && id.toString().includes(id)) || 
       (targetId && id.toString().includes(targetId))
     );
 
-    // 2. Chỉ hiện Modal nếu là Guest, view bị bảo vệ VÀ không nằm trong Whitelist
     const protectedViews: ViewType[] = [
       'grammar-level', 'lesson', 'speaking-lesson', 'pronunciation-lesson', 
       'vocabulary-lesson', 'speaking-challenge-game', 'make-question-game', 
@@ -187,7 +190,6 @@ const App: React.FC = () => {
       return;
     }
 
-    // 3. Thực hiện chuyển view
     const premiumViews: ViewType[] = ['ai-friend-detail', 'real-life-ai-chat'];
     if (premiumViews.includes(view) && !premiumViews.includes(newView)) syncCreditToBackend();
 
@@ -224,7 +226,7 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    const aiProps = { credit, setCredit: handleSetCredit };
+    const aiProps = { credit, setCredit: handleSetCredit, setIsCreditModalOpen };
     const realLifeSubUnitIds = ['buySmoothie', 'buyFruits', 'buyVeggies', 'buyMeat', 'atRestaurant'];
     
     switch (view) {
