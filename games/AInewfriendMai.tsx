@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, Gauge, Heart } from 'lucide-react';
 import type { AIFriend } from '../types';
+// Sử dụng hệ thống xoay vòng Key đã fix lỗi 404
+import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- DICTIONARY DATA ---
 const DICTIONARY: Record<string, { EN: string; RU: string; type: string }> = {
@@ -81,6 +83,9 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
 
+  // Fallback avatar URL để chống trắng màn hình
+  const safeAvatar = character?.avatarUrl || "https://lh3.googleusercontent.com/d/1l8eqtV6ISGB2-KTg0ysbPIflAIw6bN9D";
+
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
@@ -109,7 +114,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   const speakWord = async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].replace(/[*]/g, '').trim();
+    const cleanText = text.split('|')[0].replace(/[*_`#]/g, '').trim();
     return new Promise<void>(resolve => {
       const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
       audioRef.current.src = url;
@@ -119,7 +124,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     });
   };
 
-  // --- AI BRIDGE (THAY ĐỔI: DÙNG /API/CHAT VÀ GỘP LOGIC) ---
+  // --- AI BRIDGE (CHỈNH SỬA ĐỂ DÙNG TRỰC TIẾP generateContentWithRetry) ---
   const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -127,19 +132,16 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     let finalInput = text.trim();
 
-    // Bước 1: Sửa lỗi chính tả nếu đến từ Mic (Gửi qua API Proxy)
+    // Bước 1: Sửa lỗi chính tả nếu đến từ Mic (Gửi qua API Gemini trực tiếp)
     if (fromMic) {
       try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Sửa lỗi chính tả và thêm dấu câu cho câu này: "${finalInput}"`,
-            systemPrompt: "Bạn là trợ lý sửa lỗi tiếng Việt. Chỉ trả về câu đã sửa, không giải thích."
-          })
-        });
-        const data = await response.json();
-        if (data.text) finalInput = data.text.trim().replace(/^"|"$/g, '');
+        const correctionPayload = {
+          model: "gemini-1.5-flash",
+          config: { systemInstruction: "Bạn là trợ lý sửa lỗi tiếng Việt. Chỉ trả về câu đã sửa, không giải thích." },
+          contents: [{ role: 'user', parts: [{ text: `Sửa lỗi chính tả và thêm dấu câu cho câu này: "${finalInput}"` }] }]
+        };
+        const correctionResult = await generateContentWithRetry(correctionPayload);
+        if (correctionResult.text) finalInput = correctionResult.text.trim().replace(/^"|"$/g, '');
       } catch (e) { console.error("Mic correction error", e); }
     }
 
@@ -147,34 +149,35 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     setMessages(prev => [...prev, { role: 'user', text: finalInput, id: userMsgId }]);
     setUserInput("");
 
-    // Bước 2: Nhập vai Mai + History (Gửi qua API Proxy)
+    // Bước 2: Nhập vai Mai + History (Gửi qua API Gemini trực tiếp)
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: finalInput,
-          history: messages.map(m => ({
-            role: m.role === 'ai' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          })),
-          systemPrompt: `
+      const chatPayload = {
+        model: "gemini-1.5-flash",
+        config: {
+          systemInstruction: `
             BỐI CẢNH: Bạn là Mai, 45 tuổi, đến từ Ninh Bình. 
             VAI TRÒ: Một người bạn thân thiện, xưng "Tôi" và gọi người dùng (${userName}) là "${userPronoun}".
-            TÍNH CÁCH: Nhẹ nhàng, ấm áp, đậm chất phụ nữ miền Bắc. Có một sạp nhỏ bán kem và sinh tố nhưng không nhắc đến trừ khi được hỏi.
+            TÍNH CÁCH: Nhẹ nhàng, ấm áp, đậm chất phụ nữ miền Bắc. Có một sạp nhỏ bán kem và sinh tố.
             NHIỆM VỤ: Trò chuyện làm quen, hỏi thăm sức khỏe/công việc. Nếu có chủ đề "${topic || 'tự do'}", hãy xoay quanh nó.
             ĐỊNH DẠNG TRẢ LỜI: Tiếng Việt | Dịch sang ${t.systemPromptLang} | USER_TRANSLATION: [Dịch câu cuối của người dùng sang ${t.systemPromptLang}]
             QUY TẮC: Tối đa 3 câu. Không dùng ký hiệu *. Luôn kết thúc bằng một câu hỏi quan tâm.
           `
-        })
-      });
+        },
+        contents: [
+          ...messages.map(m => ({
+            role: m.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          })),
+          { role: 'user', parts: [{ text: finalInput }] }
+        ]
+      };
 
-      const data = await response.json();
+      const data = await generateContentWithRetry(chatPayload);
+
       if (data.text) {
         const rawAiResponse = data.text;
         const aiMsgId = `ai-${Date.now()}`;
         
-        // Tách dịch câu của người dùng để hiển thị riêng
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
         const cleanAIDisplay = rawAiResponse.replace(/USER_TRANSLATION:.*$/gi, '').trim();
@@ -239,7 +242,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     return (
       <div className="w-full h-full bg-orange-50 flex items-center justify-center p-4">
         <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[10px] border-white">
-          <img src={character.avatarUrl} className="w-44 h-44 mx-auto mb-6 rounded-full border-4 border-orange-400 object-cover shadow-lg" alt="Mai" />
+          <img src={safeAvatar} className="w-44 h-44 mx-auto mb-6 rounded-full border-4 border-orange-400 object-cover shadow-lg" alt="Mai" />
           <h1 className="text-4xl font-black text-orange-600 mb-2 italic uppercase">Mai Ninh Bình 🍨</h1>
           <p className="text-slate-400 mb-10 font-medium italic">"Rất vui được làm quen với {userPronoun} ạ!"</p>
           <div className="flex gap-4 justify-center mb-10">
@@ -265,7 +268,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         <div className="h-[20vh] md:h-full md:w-1/3 bg-orange-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-orange-100 shrink-0">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <div className="relative">
-              <img src={character.avatarUrl} className="w-20 h-20 md:w-56 md:h-56 rounded-full border-4 border-white shadow-xl object-cover" alt="Mai" />
+              <img src={safeAvatar} className="w-20 h-20 md:w-56 md:h-56 rounded-full border-4 border-white shadow-xl object-cover" alt="Mai" />
               {isThinking && <div className="absolute inset-0 bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center animate-pulse"><div className="w-2 h-2 bg-orange-600 rounded-full animate-bounce"></div></div>}
             </div>
             <div className="text-left md:text-center">
