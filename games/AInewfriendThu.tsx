@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge, Maximize, Minimize } from 'lucide-react';
 import type { AIFriend } from '../types';
@@ -148,7 +147,7 @@ const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
   const userName = user.name || 'Guest';
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
-  let topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam. Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
+  let topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam (Year 2026). Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 PERSONALITY & LOGIC:
 1. TONE: Sincere and natural. Speak like a real person, not an AI or a formal guide.
 2. TOPICS: Focus on general topics like hobbies, interests, positive things in life, sharing about yourself, and the beauty of Hanoi.
@@ -158,7 +157,7 @@ PERSONALITY & LOGIC:
 6. CLOSING: Use gentle interactive tags like "...ạ", "...nhé", "...đúng không ạ?".`;
 
   if (topic) {
-    topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam. Start the conversation naturally about "${topic}". Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
+    topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam (Year 2026). Start the conversation naturally about "${topic}". Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 PERSONALITY & LOGIC:
 1. TONE: Sincere and natural. Speak like a real person, not an AI or a formal guide.
 2. PERSONAL CONNECTION: Frequently ask the User about their feelings, day, or opinions to keep the conversation engaging.
@@ -178,12 +177,11 @@ const punctuateText = async (rawText: string) => {
   if (!rawText.trim()) return rawText;
   try {
     const response = await generateContentWithRetry({
-      model: 'gemini-2.5-flash',
-      contents: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"`
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả): "${rawText}"` }] }]
     });
     return response.text?.trim() || rawText;
   } catch (error) {
-    console.error("Lỗi khi thêm dấu câu:", error);
     return rawText;
   }
 };
@@ -206,7 +204,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  const THU_IMAGE_URL = "https://lh3.googleusercontent.com/d/1aJFCfbbdfLmo0-c4NtNtHtFNWQiMXpLz";
+  const THU_IMAGE_URL = "https://i.ibb.co/L5pYFmX/thu-hanoi.png";
   const t = getTranslations(topic)[selectedLang];
   
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
@@ -224,12 +222,12 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
-            config: { systemInstruction: getSystemPrompt(t.systemPromptLang, topic) }
+            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
         });
         
         const rawAiResponse = response.text || "";
@@ -346,11 +344,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           const audio = audioRef.current;
           audio.src = url;
           audio.playbackRate = playbackSpeed;
-          // FIX: The onended event handler for HTMLAudioElement expects a function that takes an Event parameter.
-          // Directly assigning `resolve` causes a type mismatch. Wrapping it in an arrow function solves this.
           audio.onended = () => resolve();
-          // FIX: Similarly, onerror expects a specific event handler signature.
-          // Wrapping resolve ensures type compatibility.
           audio.onerror = () => resolve();
           audio.play().catch(() => resolve());
         });
@@ -393,7 +387,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-emerald-500 shadow-md">
             <img src={THU_IMAGE_URL} alt="Thu" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic">Thu: New Friend</h1>
+          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic">Thu: New Friend 🌸</h1>
           <p className="text-slate-500 mb-8 italic">"Dạ, Thu chào anh. Thu rất vui được làm bạn với anh."</p>
           <div className="space-y-6">
             <div className="flex justify-center space-x-3">
