@@ -1,7 +1,10 @@
-// /config/apiKeys.ts
+// src/config/apiKeys.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// 1. Cấu hình 10 Keys lấy từ Environment Variables trên Vercel
+/**
+ * 1. HỆ THỐNG 10 KEYS XOAY VÒNG
+ * Đã lọc bỏ các key trống để tránh lỗi undefined khi gọi API
+ */
 const API_KEYS = [
   import.meta.env.VITE_GEMINI_KEY_1,
   import.meta.env.VITE_GEMINI_KEY_2,
@@ -13,59 +16,68 @@ const API_KEYS = [
   import.meta.env.VITE_GEMINI_KEY_8,
   import.meta.env.VITE_GEMINI_KEY_9,
   import.meta.env.VITE_GEMINI_KEY_10,
-].filter(key => !!key); // Chỉ giữ lại các key đã được nhập giá trị
+].filter(key => !!key);
 
 let currentKeyIndex = 0;
 
+export const getNextApiKey = () => {
+  if (API_KEYS.length === 0) return null;
+  const key = API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  return key;
+};
+
 /**
- * Hàm gọi API mạnh mẽ nhất: 
- * - Hỗ trợ Chat History (Trí nhớ)
- * - Hỗ trợ System Instruction (Não bộ/Vai trò)
- * - Tự động xoay vòng 10 Key nếu gặp lỗi
+ * 2. HÀM GỌI API GEMINI 3 FLASH (NÃO BỘ TRUNG TÂM)
+ * Hàm này sẽ nhận lệnh từ các game và điều phối 10 keys
  */
-export const generateContentWithRetry = async (payload: any, retryCount = 0): Promise<any> => {
-  if (retryCount >= API_KEYS.length) {
-    throw new Error("Tất cả API Keys đều đã thất bại hoặc hết hạn mức.");
+export const generateContentWithRetry = async (payload: {
+  model?: string;
+  config: { systemInstruction: string };
+  contents: any[];
+}) => {
+  let lastError;
+  
+  // Thử lần lượt các Key nếu gặp lỗi
+  for (let i = 0; i < API_KEYS.length; i++) {
+    try {
+      const apiKey = getNextApiKey();
+      if (!apiKey) throw new Error("No API Key found in environment variables.");
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      
+      // Sử dụng model gemini-3-flash-preview theo yêu cầu của ông
+      // Nếu payload truyền vào một model khác, nó sẽ ưu tiên cái đó
+      const model = genAI.getGenerativeModel({ 
+        model: payload.model || "gemini-3-flash-preview", 
+        systemInstruction: payload.config.systemInstruction
+      });
+
+      // Thực hiện gọi API với dữ liệu hội thoại (History)
+      const result = await model.generateContent({
+        contents: payload.contents,
+      });
+
+      const response = await result.response;
+      
+      // Trả về định dạng chuẩn để Frontend xử lý
+      return {
+        text: response.text(),
+        audio: null // Vẫn giữ null để Frontend tự kích hoạt Google TTS (ổn định nhất)
+      };
+
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`Key index ${currentKeyIndex} gặp lỗi, đang đổi key...`, error.message);
+      
+      // Nếu lỗi 429 (Hết hạn mức) hoặc 404 (Sai tên model ở key đó), đổi key ngay
+      if (error.message?.includes('429') || error.message?.includes('404') || error.message?.includes('quota')) {
+        continue;
+      } else {
+        // Nếu lỗi logic hoặc cấu trúc prompt, dừng lại để tránh phí lượt thử
+        throw error; 
+      }
+    }
   }
-
-  const apiKey = API_KEYS[currentKeyIndex];
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  try {
-    // PHÂN TÍCH PAYLOAD ĐỂ GIỮ "NÃO" CHO CHATBOT
-    // Nếu payload là object (từ Chatbot/Lan), ta lấy model và hướng dẫn hệ thống
-    // Nếu payload chỉ là string, ta dùng mặc định
-    const modelName = payload.model || "gemini-3-flash preview";
-    const systemPrompt = payload.config?.systemInstruction || "";
-    
-    const model = genAI.getGenerativeModel({ 
-      model: modelName,
-      systemInstruction: systemPrompt 
-    });
-
-    // PHÂN TÍCH LỊCH SỬ (HISTORY)
-    // Chatbot gửi 'contents' là một mảng các câu hội thoại cũ. 
-    // Nếu không có, ta tạo một mảng mới từ prompt hiện tại.
-    const contents = payload.contents || [{ role: 'user', parts: [{ text: typeof payload === 'string' ? payload : "" }] }];
-
-    // GỌI API VỚI ĐẦY ĐỦ NGỮ CẢNH
-    const result = await model.generateContent({ contents });
-    const response = await result.response;
-    const text = response.text();
-
-    // Trả về định dạng Object để Chatbot.tsx và GameLan.tsx đọc được
-    return {
-      text: text,
-      response: response
-    };
-
-  } catch (error: any) {
-    console.warn(`Key số ${currentKeyIndex + 1} lỗi. Đang chuyển sang key tiếp theo...`);
-    
-    // Tăng index để dùng key tiếp theo cho lần thử lại
-    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-    
-    // Đệ quy thử lại với key mới
-    return generateContentWithRetry(payload, retryCount + 1);
-  }
+  throw lastError;
 };
