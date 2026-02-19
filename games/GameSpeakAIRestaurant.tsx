@@ -40,6 +40,20 @@ const LANGUAGES = {
   }
 };
 
+// --- SMART UTILS: Tự động thêm dấu câu cho giọng nói ---
+const punctuateText = async (rawText: string) => {
+    if (!rawText.trim()) return rawText;
+    try {
+        const response = await generateContentWithRetry({
+            model: 'gemini-3-flash-preview',
+            contents: [{ role: 'user', parts: [{ text: `Thêm dấu câu và viết hoa đúng cho đoạn hội thoại nhà hàng sau (chỉ trả về kết quả): "${rawText}"` }] }]
+        });
+        return response.text?.trim() || rawText;
+    } catch (error) {
+        return rawText;
+    }
+};
+
 const getSystemPrompt = (targetLangName: string) => {
   return `You are Linh (22 years old), a professional and polite waitress at a Vietnamese restaurant.
 ROLE: You are a waitress taking orders, NOT a teacher or language assistant.
@@ -50,7 +64,7 @@ STRICT RULE 4: Focus on: greeting, seating, taking food/drink orders, and billin
 FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]`;
 };
 
-export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character }) => {
+export const GameRestaurant: React.FC<{ character: any }> = ({ character }) => {
   const [gameState, setGameState] = useState<'start' | 'playing'>('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
@@ -62,31 +76,88 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef(new Audio());
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
+  const silenceTimerRef = useRef<any>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
 
   const t = LANGUAGES[selectedLang];
 
-  const speakWord = useCallback(async (text: string, msgId: string | null = null) => {
+  // --- FULLSCREEN ---
+  const toggleFullscreen = () => {
+      if (!document.fullscreenElement) {
+          gameContainerRef.current?.requestFullscreen();
+          setIsFullscreen(true);
+      } else {
+          document.exitFullscreen();
+          setIsFullscreen(false);
+      }
+  };
+
+  // --- TTS Logic: Phát âm thanh mượt mà theo phân đoạn ---
+  const speak = useCallback(async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].replace(/(\d+)k/g, '$1 nghìn').replace(/[*#]/g, '').trim();
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-    audioRef.current.src = url;
-    audioRef.current.playbackRate = speechRate;
-    audioRef.current.play().catch(console.error);
-    audioRef.current.onended = () => setActiveVoiceId(null);
+
+    if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+    }
+
+    const viPart = text.split('|')[0].replace(/(\d+)k/g, '$1 nghìn').replace(/[*#]/g, '').trim();
+    const segments = viPart.split(/([.!?])/).reduce((acc: string[], cur, i, arr) => {
+        if (i % 2 === 0) {
+            const combined = (cur + (arr[i+1] || "")).trim();
+            if (combined) acc.push(combined);
+        }
+        return acc;
+    }, []);
+
+    try {
+        for (const segment of segments) {
+            await new Promise<void>((resolve, reject) => {
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
+                const audio = new Audio(url);
+                audio.playbackRate = speechRate;
+                currentAudioRef.current = audio;
+                audio.onended = () => resolve();
+                audio.onerror = () => reject();
+                audio.play().catch(reject);
+            });
+        }
+    } finally {
+        setActiveVoiceId(null);
+    }
   }, [speechRate]);
 
+  // --- Speech Recognition: Tự động gửi sau khi im lặng 2s ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-      recognition.onresult = (e: any) => handleSendMessage(e.results[0][0].transcript);
+      
+      recognition.onstart = () => setIsRecording(true);
+      
+      recognition.onresult = (e: any) => {
+          const transcript = Array.from(e.results)
+              .map((res: any) => res[0].transcript)
+              .join('');
+          setUserInput(transcript);
+
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(async () => {
+              if (transcript.trim() && !isProcessingRef.current) {
+                  recognition.stop();
+                  const cleanText = await punctuateText(transcript.trim());
+                  handleSendMessage(cleanText);
+              }
+          }, 2000);
+      };
+
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
@@ -98,12 +169,10 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
     setIsThinking(true);
 
     const userMsgId = `user-${Date.now()}`;
-    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
-    setMessages(prev => [...prev, newUserMsg]);
+    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null }]);
     setUserInput("");
 
     try {
-      // THE CHỐT: Lọc lịch sử để AI không bị "nhiễm" thói quen giải thích
       const chatHistory = messages.map(m => ({
         role: m.role === 'ai' ? 'model' : 'user',
         parts: [{ text: m.text.split('|')[0].trim() }]
@@ -112,15 +181,13 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
       const response = await generateContentWithRetry({
         model: 'gemini-3-flash-preview',
         contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
-        config: { 
-            systemInstruction: getSystemPrompt(t.systemPromptLang)
-        }
+        config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
       });
 
       const rawAiResponse = response.text || "";
       const parts = rawAiResponse.split('|');
-      const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
-      const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
+      const aiVi = parts[0]?.trim() || "";
+      const aiTrans = parts[1]?.trim() || "";
       
       const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
       const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
@@ -131,13 +198,11 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
       setMessages(prev => {
         const updated = [...prev];
         const userIdx = updated.findIndex(m => m.id === userMsgId);
-        if (userIdx !== -1 && userTranslationValue) {
-            updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
-        }
+        if (userIdx !== -1) updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
         return [...updated, { role: 'ai', text: cleanDisplay, id: aiMsgId }];
       });
 
-      speakWord(cleanDisplay, aiMsgId);
+      speak(cleanDisplay, aiMsgId);
 
     } catch (e) {
       console.error("Gemini Error:", e);
@@ -157,7 +222,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
         return (
           <span key={idx} className="group relative border-b border-dotted border-orange-400 cursor-help text-orange-700 font-bold">
             {word}
-            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg z-50 w-max shadow-xl">
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg z-50 w-max shadow-xl font-normal">
               {entry.EN}
             </span>
           </span>
@@ -180,7 +245,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
                 <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-2 rounded-xl font-bold transition-all ${selectedLang === l ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>{l}</button>
               ))}
             </div>
-            <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} 
+            <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} 
               className="bg-orange-600 text-white px-16 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-3">
               <Utensils size={24}/> {t.ui_start}
             </button>
@@ -192,7 +257,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
 
   return (
     <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex flex-col md:flex-row overflow-hidden md:p-4">
-      <div className="h-[20vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 flex flex-row md:flex-col items-center justify-between border-r border-slate-100 shrink-0 z-20 shadow-2xl">
+      <div className="h-[20vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 flex flex-row md:flex-col items-center justify-between border-r border-slate-100 shrink-0 z-20">
         <div className="flex flex-row md:flex-col items-center gap-4">
           <div className="w-20 h-20 md:w-52 md:h-52 rounded-3xl overflow-hidden border-4 border-white shadow-xl">
             <img src={character.avatarUrl} className="w-full h-full object-cover" />
@@ -209,25 +274,31 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
       </div>
 
       <div className="flex-1 bg-white flex flex-col overflow-hidden relative">
-        <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm">
+        <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm z-10">
           <span className="font-black text-orange-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
-          <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">
-            {speechRate === 1.0 ? 'Normal Speed' : 'Slow Speed'}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1">
+              <Gauge size={12}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+            </button>
+            <button onClick={toggleFullscreen} className="p-1 text-slate-400 hover:text-orange-600 transition-colors">
+                {isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-orange-50/5 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-orange-50/10 custom-scrollbar">
           {messages.map((msg) => {
             const parts = msg.text.split('|');
+            const isActive = activeVoiceId === msg.id;
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${msg.role === 'user' ? 'bg-orange-600 text-white' : 'bg-white text-slate-800 border border-orange-100'}`}>
-                  <div className="text-sm md:text-base font-bold flex items-start gap-2">
-                    <span className="flex-1">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.text}</span>
-                    <button onClick={() => speakWord(msg.text, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={16}/></button>
+                <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm transition-all ${isActive ? 'ring-2 ring-orange-400' : ''} ${msg.role === 'user' ? 'bg-orange-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-orange-100 rounded-tl-none'}`}>
+                  <div className="text-sm md:text-base font-bold flex items-start gap-4">
+                    <span className="flex-1 leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.text}</span>
+                    <button onClick={() => speak(msg.text, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={18}/></button>
                   </div>
                   {(parts[1] || msg.translation) && (
-                    <div className="mt-2 pt-2 border-t border-black/5 text-[11px] italic opacity-70">
+                    <div className={`mt-2 pt-2 border-t text-[11px] italic ${msg.role === 'user' ? 'border-orange-500 text-orange-100' : 'border-slate-50 text-slate-400'}`}>
                       {msg.role === 'ai' ? parts[1] : msg.translation}
                     </div>
                   )}
@@ -239,7 +310,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
           <div ref={chatEndRef} />
         </div>
 
-        <div className="p-4 bg-white border-t flex gap-2">
+        <div className="p-4 bg-white border-t flex gap-2 pb-8 md:pb-4 shadow-inner">
           <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)}
             placeholder={t.ui_placeholder} className="flex-1 bg-slate-50 px-4 py-3 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-orange-100 transition-all" />
           <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-xl shadow-lg active:scale-95 transition-all"><Send size={18}/></button>
@@ -249,4 +320,4 @@ export const GameSpeakAIRestaurant: React.FC<{ character: any }> = ({ character 
   );
 };
 
-export default GameSpeakAIRestaurant;
+export default GameRestaurant;
