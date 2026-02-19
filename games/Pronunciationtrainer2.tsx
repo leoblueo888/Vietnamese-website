@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Mic, Square, RotateCcw, Volume2, Layers, BookOpen, Globe, Volume1, Info, HelpCircle, X, ChevronRight, Languages } from 'lucide-react';
 
+// --- IMPORT HÀM TỪ CONFIG ĐỂ XOAY VÒNG KEY ---
+import { generateContentWithRetry } from '../config/apiKeys';
+
 // --- Assets & Constants ---
 const INITIAL_CONSONANTS = ["", "b", "c", "ch", "d", "đ", "g", "gh", "gi", "h", "k", "kh", "l", "m", "n", "ng", "ngh", "nh", "p", "ph", "qu", "r", "s", "t", "th", "tr", "v", "x"];
 
 /**
- * Core Model: Gemini 2.5 Flash
+ * Core Model: Gemini 3 Flash
  */
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = "gemini-3-flash-preview";
 
 const TRANSLATIONS = {
   en: {
@@ -27,7 +30,7 @@ const TRANSLATIONS = {
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Prefix_Consonant",
-    footer: "Adaptive Engine // Gemini 2.5 Flash",
+    footer: "Adaptive Engine // Gemini 3 Flash",
     contextTitle: "Context",
     backBtn: "Exit"
   },
@@ -48,7 +51,7 @@ const TRANSLATIONS = {
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Префикс_Согласная",
-    footer: "Движок: Gemini 2.5 Flash",
+    footer: "Движок: Gemini 3 Flash",
     contextTitle: "Контекст",
     backBtn: "Выход"
   }
@@ -132,7 +135,7 @@ const DIPHTHONG_BASES = {
   VC: ['iêm', 'iên', 'iêng', 'iêp', 'iêt', 'iêu', 'iêc', 'uôm', 'uôn', 'uông', 'uôc', 'uôt', 'ươm', 'ươn', 'ương', 'ươc', 'ươp', 'ươt', 'ươu', 'oan', 'oang', 'oac', 'oat', 'uyên', 'uyêt']
 };
 
-export default function GamePronunciationTrainer2() {
+export function GamePronunciationTrainer2() {
   const [gameStarted, setGameStarted] = useState(false);
   const [lang, setLang] = useState('en');
   const [activeTab, setActiveTab] = useState('V');
@@ -151,24 +154,7 @@ export default function GamePronunciationTrainer2() {
     vowels: generateValidTones(base, prefix)
   })).filter(family => family.vowels.length > 0);
 
-  const callGemini = async (payload: any, retries = 5, delay = 1000) => {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${process.env.NEXT_PUBLIC_API_KEY || ''}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) throw new Error('API Error');
-      return await response.json();
-    } catch (err) {
-      if (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return callGemini(payload, retries - 1, delay * 2);
-      }
-      throw err;
-    }
-  };
-
+  // --- Cập nhật useEffect: Sử dụng "não" mới (Config API) ---
   useEffect(() => {
     if (!gameStarted) return;
     const fetchWordInfo = async () => {
@@ -187,11 +173,16 @@ export default function GamePronunciationTrainer2() {
             "comboMeaning": "Translation (null if invalid)"
           }`;
           
-        const data = await callGemini({
+        const response = await generateContentWithRetry({
+          model: MODEL_NAME,
           contents: [{ parts: [{ text: promptText }] }],
           generationConfig: { responseMimeType: "application/json" }
         });
-        const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+
+        // Bóc tách JSON an toàn khỏi Markdown nếu có
+        const rawJson = response.text.replace(/```json|```/g, '').trim();
+        const result = JSON.parse(rawJson || "{}");
+        
         setWordDetails({
           meaning: result.isValid ? result.meaning : null,
           combo: result.isValid ? result.combo : null,
@@ -199,6 +190,7 @@ export default function GamePronunciationTrainer2() {
           isValid: result.isValid
         });
       } catch (err) {
+        console.error("Lỗi AI Trainer 2:", err);
         setWordDetails({ meaning: null, combo: null, comboMeaning: null, isValid: false });
       } finally {
         setIsLoadingDetails(false);
@@ -448,3 +440,5 @@ export default function GamePronunciationTrainer2() {
     </div>
   );
 }
+
+export default GamePronunciationTrainer2;
