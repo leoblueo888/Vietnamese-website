@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge } from 'lucide-react';
-// ĐỒNG BỘ: Sử dụng hàm lấy key xoay vòng tập trung
 import { generateContentWithRetry } from '../config/apiKeys';
 
+// DICTIONARY giữ nguyên như bạn đã cung cấp
 const DICTIONARY = {
   "cơm": { EN: "cooked rice / meal", type: "Noun" },
   "tên": { EN: "name", type: "Noun" },
@@ -58,7 +58,7 @@ const getTranslations = (topic?: string | null) => {
       RU: {
         label: "Русский",
         ui_welcome: "Привет! Я Лан. Давай дружить!",
-        ui_start: "НАЧАТЬ CHAT",
+        ui_start: "НАCHАTЬ CHAT",
         ui_placeholder: "Пишите на любом языке...",
         ui_recording: "СЛУШАЮ...",
         ui_tapToTalk: "Нажмите, để nói tiếng Việt",
@@ -126,7 +126,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const [speechSpeed, setSpeechSpeed] = useState(1.0); 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef(new Audio());
+  // Đã bỏ audioRef dùng chung để tránh lỗi trên Vercel
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
@@ -178,6 +178,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
             return [...updated, newAiMsg];
         });
 
+        // Gọi hàm nói "Thông minh" ngay khi AI trả về kết quả
         speakWord(cleanDisplay, aiMsgId);
 
     } catch (error: any) {
@@ -190,24 +191,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; });
-
-  useEffect(() => {
-    const startTime = performance.now();
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw8CybuvtYKzwxLvoNATEun7RFwFGc6Yxa9uNlKI8_FN2oeJgjUCnnSeruMC_0RMvrm/exec';
-    return () => {
-        const duration = Math.round((performance.now() - startTime) / 1000);
-        if (duration > 5) { 
-            const userString = localStorage.getItem('user');
-            const user = userString ? JSON.parse(userString) : { name: 'Guest' };
-            const params = new URLSearchParams();
-            params.append('name', user.name || 'Guest');
-            params.append('section', 'Speaking Practice');
-            params.append('content', 'Lan Ha Long');
-            params.append('duration', String(duration));
-            navigator.sendBeacon(SCRIPT_URL, params);
-        }
-    };
-  }, []);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -245,30 +228,26 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     });
   };
 
-  const speakWord = async (text: string, msgId: any = null) => {
+  // CÁCH LẤY THÔNG MINH: Giống game "Buy Meat" và "Job"
+  const speakWord = (text: string, msgId: any = null) => {
     if (!text) return;
-    if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].trim();
-    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
-      if (idx % 2 === 0) {
-        const nextPunct = arr[idx + 1] || "";
-        const combined = (current + nextPunct).trim();
-        if (combined) acc.push(combined);
-      }
-      return acc;
-    }, []);
-    try {
-      for (const segment of segments) {
-        await new Promise<void>((resolve) => {
-          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-          audioRef.current.src = url;
-          audioRef.current.playbackRate = speechSpeed; 
-          audioRef.current.onended = () => resolve();
-          audioRef.current.onerror = () => resolve();
-          audioRef.current.play().catch(() => resolve());
-        });
-      }
-    } catch (e) { console.error(e); } finally { if (msgId) setActiveVoiceId(null); }
+    if (msgId) setActiveVoiceId(msgId);
+
+    // Dùng URL trực tiếp như game thông minh của bạn
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+    
+    // Khởi tạo đối tượng mới mỗi lần để tránh lỗi trên Vercel
+    const audio = new Audio(url);
+    audio.playbackRate = speechSpeed;
+    
+    audio.play().catch(e => {
+        console.warn("Autoplay blocked, user interaction needed.");
+    });
+
+    audio.onended = () => {
+        if (msgId) setActiveVoiceId(null);
+    };
   };
   
   const toggleRecording = () => {
@@ -317,6 +296,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
           <div className="relative w-[5.5rem] h-[5.5rem] md:w-48 md:h-48 rounded-full md:rounded-3xl overflow-hidden shadow-xl border-2 md:border-4 border-white bg-white shrink-0">
             <img src={LAN_IMAGE_URL} alt="Lan" className="w-full h-full object-cover" />
             {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm animate-pulse"><div className="w-2 h-2 bg-white rounded-full mx-1 animate-bounce" /></div>}
+            {activeVoiceId && <div className="absolute bottom-2 right-2 bg-white rounded-full p-2 shadow-lg animate-bounce text-sky-500"><Volume2 size={24} /></div>}
           </div>
           <div className="md:mt-6 text-left md:text-center shrink-0">
             <h2 className="text-xl md:text-2xl font-black text-slate-800 italic truncate max-w-[150px] md:max-w-none">Lan ✨</h2>
@@ -347,7 +327,8 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
             const parts = (msg.displayedText || msg.text || "").split('|');
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
+                <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100 transition-all active:scale-[0.98]'}`}
+                     onClick={() => msg.role === 'ai' && speakWord(msg.text, msg.id)}>
                   <p className="text-sm md:text-base font-bold">{msg.role === 'ai' ? parts[0] : msg.displayedText}</p>
                   {((msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation)) && (
                     <p className="text-xs italic mt-2 pt-2 border-t border-black/10">{msg.role === 'ai' ? parts[1] : msg.translation}</p>
@@ -366,4 +347,5 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     </div>
   );
 };
+
 export default AIfriendLan;
