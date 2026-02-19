@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Mic, Square, RotateCcw, Volume2, 
-  Info, Headphones, Layers, BookOpen, Volume1,
-  Sparkles, Languages, MessageSquare, Target, Activity, Quote, XCircle, Globe, ChevronRight, User,
-  MicOff, Send, Download, PlayCircle, Gauge, Maximize, Minimize, AlertCircle
+  Play, Mic, Volume2, 
+  Sparkles, MicOff, AlertCircle, Gauge, Maximize
 } from 'lucide-react';
 
-// --- THAY ĐỔI QUAN TRỌNG: Import hàm từ config ---
+// --- IMPORT HÀM TỪ CONFIG ĐỂ XOAY VÒNG KEY ---
 import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- Constants ---
@@ -35,13 +33,9 @@ const TRANSLATIONS: any = {
     startBtn: "Start Training",
     library: "Sound Library",
     selectedWord: "Target",
-    definition: "Meaning",
     score: "Score",
     heard: "Your voice",
-    ui_placeholder: "Type or speak...",
-    ui_start: "START",
-    ui_listening: "Listening...",
-    ui_tapToTalk: "Tap mic to talk",
+    ui_analyzing: "ANALYZING...",
   },
   ru: {
     startTitle: "PRONUNCIATION TRAINER 1",
@@ -49,13 +43,9 @@ const TRANSLATIONS: any = {
     startBtn: "Начать",
     library: "Библиотека",
     selectedWord: "Слово",
-    definition: "Значение",
     score: "Балл",
     heard: "Ваш голос",
-    ui_placeholder: "Пишите...",
-    ui_start: "НАЧАТЬ",
-    ui_listening: "Слушаю...",
-    ui_tapToTalk: "Нажмите, để nói",
+    ui_analyzing: "АНАЛИЗ...",
   }
 };
 
@@ -71,23 +61,6 @@ const checkSpelling = (prefix: string, vowelObj: any, suffix: string) => {
   if (['c', 'ch', 'p', 't'].includes(suffix) && !isStopTone && suffix !== '') return false;
   
   return true;
-};
-
-// --- Chỗ sửa 1: punctuateText ---
-const punctuateText = async (rawText: string) => {
-  if (!rawText.trim()) return rawText;
-  try {
-    const response = await generateContentWithRetry({
-      model: 'gemini-3-flash-preview',
-      contents: [{ 
-        role: 'user', 
-        parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng cho đoạn văn bản tiếng Việt này: "${rawText}" (Chỉ trả về kết quả)` }] 
-      }]
-    });
-    return response.text?.trim() || rawText;
-  } catch (error) {
-    return rawText;
-  }
 };
 
 export const Pronunciationtrainer1: React.FC = () => {
@@ -109,42 +82,67 @@ export const Pronunciationtrainer1: React.FC = () => {
   const currentWord = `${activeTab.includes('c_') ? prefixC : ''}${selectedVowel.char}${activeTab.includes('_c') ? suffixC : ''}`;
   const isValid = checkSpelling(prefixC, selectedVowel, suffixC);
 
-  // Setup Speech Recognition
+  // --- Speech Recognition ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.lang = 'vi-VN';
+      recognition.continuous = false;
+      recognition.onstart = () => setIsRecording(true);
       recognition.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
-        const cleanText = await punctuateText(transcript);
-        setUserInput(cleanText);
-        analyzePronunciation(cleanText, currentWord);
+        await handleVoiceInput(transcript);
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [currentWord]);
+  }, [currentWord, lang]);
 
-  // --- Chỗ sửa 2: Phân tích phát âm ---
-  const analyzePronunciation = async (heard: string, target: string) => {
+  // --- Xử lý đầu vào giọng nói ---
+  const handleVoiceInput = async (rawText: string) => {
     setIsAnalyzing(true);
+    
+    // Bước 1: Làm sạch văn bản (Punctuate) dùng Key xoay vòng
+    let cleanText = rawText;
     try {
-      const response = await generateContentWithRetry({
+      const pResponse = await generateContentWithRetry({
+        model: 'gemini-3-flash-preview',
+        contents: [{ 
+          role: 'user', 
+          parts: [{ text: `Hãy sửa lỗi chính tả và thêm dấu cho từ/câu tiếng Việt này: "${rawText}". Chỉ trả về kết quả sạch.` }] 
+        }]
+      });
+      cleanText = pResponse.text?.trim() || rawText;
+    } catch (err) { console.error("Lỗi Punctuate:", err); }
+
+    setUserInput(cleanText);
+
+    // Bước 2: Phân tích phát âm dùng Key xoay vòng
+    try {
+      const aResponse = await generateContentWithRetry({
         model: 'gemini-3-flash-preview',
         contents: [{
           role: 'user',
-          parts: [{ text: `Phân tích phát âm tiếng Việt. 
-            Mục tiêu: "${target}" 
-            Người dùng nói: "${heard}"
-            Hãy so sánh và cho điểm (0-100). Giải thích ngắn gọn bằng tiếng ${lang === 'en' ? 'English' : 'Russian'}.
-            Trả về JSON: {"score": number, "explanation": "string"}` }]
+          parts: [{ text: `
+            Hệ thống: Kiểm tra phát âm tiếng Việt.
+            Từ mục tiêu: "${currentWord}"
+            Người dùng nói: "${cleanText}"
+            Yêu cầu:
+            1. So sánh độ chính xác (0-100).
+            2. Giải thích ngắn gọn lỗi bằng tiếng ${lang === 'en' ? 'English' : 'Russian'}.
+            3. Trả về JSON định dạng: {"score": number, "explanation": "string"}
+          ` }]
         }]
       });
-      const data = JSON.parse(response.text.replace(/```json|```/g, ''));
+
+      // Bóc tách JSON an toàn
+      const rawJson = aResponse.text.replace(/```json|```/g, '').trim();
+      const data = JSON.parse(rawJson);
       setFeedback(data);
     } catch (e) {
-      setFeedback({ score: 0, explanation: "Error analyzing." });
+      console.error("Lỗi Analyze:", e);
+      setFeedback({ score: 0, explanation: "Could not analyze. Please try again." });
     } finally {
       setIsAnalyzing(false);
     }
@@ -245,10 +243,7 @@ export const Pronunciationtrainer1: React.FC = () => {
                 <Volume2 size={32} />
               </button>
               <button 
-                onClick={() => {
-                  setIsRecording(true);
-                  recognitionRef.current?.start();
-                }} 
+                onClick={() => recognitionRef.current?.start()} 
                 disabled={isRecording || !isValid}
                 className={`p-5 rounded-full transition-all shadow-xl ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-slate-900 text-white hover:scale-110'}`}
               >
@@ -258,16 +253,16 @@ export const Pronunciationtrainer1: React.FC = () => {
           </div>
 
           {isAnalyzing && (
-            <div className="text-center animate-bounce py-4 text-blue-600 font-black tracking-widest text-xs">ANALYZING...</div>
+            <div className="text-center animate-bounce py-4 text-blue-600 font-black tracking-widest text-xs uppercase">{t.ui_analyzing}</div>
           )}
 
           {feedback && (
             <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
               <div className="relative z-10">
                 <div className="text-5xl font-black mb-2">{feedback.score}%</div>
-                <div className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">Pronunciation Accuracy</div>
+                <div className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">{t.score}</div>
                 <p className="text-slate-300 text-sm leading-relaxed italic">"{feedback.explanation}"</p>
-                {userInput && <div className="mt-4 p-3 bg-white/10 rounded-xl text-xs">You said: <span className="text-white font-bold">{userInput}</span></div>}
+                {userInput && <div className="mt-4 p-3 bg-white/10 rounded-xl text-xs">{t.heard}: <span className="text-white font-bold">{userInput}</span></div>}
               </div>
               <Sparkles className="absolute -right-4 -bottom-4 text-white/5 w-32 h-32" />
             </div>
