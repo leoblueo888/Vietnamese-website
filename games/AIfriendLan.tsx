@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge } from 'lucide-react';
-// Sửa cách lấy key: Import trực tiếp hàm hoặc cấu hình từ apiKeys
+// ĐỒNG BỘ: Sử dụng hàm lấy key xoay vòng giống Chatbot
 import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
@@ -101,14 +101,14 @@ FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Tra
 `;
 };
 
+// ĐỒNG BỘ 1: Sửa hàm xử lý dấu câu
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
-      const response = await generateContentWithRetry({
-        model: 'gemini-3-flash-preview',
-        contents: `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
-      });
-      return response.text?.trim() || rawText;
+      const response = await generateContentWithRetry(
+        `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
+      );
+      return typeof response === 'string' ? response.trim() : (response.text?.trim() || rawText);
     } catch (error) {
       console.error("Punctuation error:", error);
       return rawText;
@@ -131,7 +131,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  // THAY ĐỔI 1: Cập nhật link ảnh Lan của bạn
   const LAN_IMAGE_URL = "https://drive.google.com/thumbnail?id=13mqljSIRC9hvO-snymkzuUiV4Fypqcft&sz=w800";
   
   const t = getTranslations(topic)[selectedLang as 'EN' | 'RU'];
@@ -142,11 +141,12 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     setIsThinking(true);
     let processedInput = text.trim().replace(/["'*]/g, '');
       
+    // ĐỒNG BỘ 2: Sửa đoạn xử lý Input Translation giống Chatbot
     if (!fromMic) {
         try {
           const prompt = `Detect the language of this message: "${processedInput}". If it's NOT Vietnamese, translate it accurately to Vietnamese. Return ONLY the Vietnamese result text without any quotes, stars, or explanations.`;
-          const fixResponse = await generateContentWithRetry({model: 'gemini-3-flash-preview', contents: prompt});
-          const aiResult = fixResponse.text;
+          const fixResponse = await generateContentWithRetry(prompt);
+          const aiResult = typeof fixResponse === 'string' ? fixResponse : fixResponse.text;
           if (aiResult) processedInput = aiResult.trim().replace(/^["'*]+|["'*]+$/g, '');
         } catch (e: any) { 
             console.error("Input processing error:", e);
@@ -161,18 +161,19 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     setUserInput("");
 
     try {
-        const response = await generateContentWithRetry({
-            model: 'gemini-3-flash-preview',
-            contents: currentHistory.map(m => ({
-                role: m.role === 'ai' ? 'model' : 'user',
-                parts: [{ text: (m.text || "").split('|')[0].trim() }]
-            })),
-            config: { systemInstruction: getSystemPrompt(t.systemPromptLang, topic) }
-        });
+        // ĐỒNG BỘ 3: Sửa đoạn gọi hội thoại chính
+        // Gom lịch sử vào một prompt duy nhất để dễ dàng xoay vòng key
+        const historyText = currentHistory.map(m => 
+            `${m.role === 'ai' ? 'Lan' : 'User'}: ${(m.text || "").split('|')[0].trim()}`
+        ).join('\n');
+
+        const mainPrompt = `${getSystemPrompt(t.systemPromptLang, topic)}\n\nConversation history:\n${historyText}\n\nLan:`;
+
+        const response = await generateContentWithRetry(mainPrompt);
         
-        const rawAiResponse = response.text || "";
+        const rawAiResponse = typeof response === 'string' ? response : (response.text || "");
         const parts = rawAiResponse.split('|');
-        const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
+        const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').replace(/Lan:/g, '').trim() || "";
         const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
