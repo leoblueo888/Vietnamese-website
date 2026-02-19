@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge } from 'lucide-react';
-// ĐỒNG BỘ: Sử dụng hàm lấy key xoay vòng giống Chatbot
+// ĐỒNG BỘ: Sử dụng hàm lấy key xoay vòng tập trung
 import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
@@ -58,7 +58,7 @@ const getTranslations = (topic?: string | null) => {
       RU: {
         label: "Русский",
         ui_welcome: "Привет! Я Лан. Давай дружить!",
-        ui_start: "НАCHАТЬ CHAT",
+        ui_start: "НАЧАТЬ CHAT",
         ui_placeholder: "Пишите на любом языке...",
         ui_recording: "СЛУШАЮ...",
         ui_tapToTalk: "Нажмите, để nói tiếng Việt",
@@ -84,7 +84,7 @@ const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
   const userName = user.name || 'Guest';
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
-  let initialPrompt = `You are Lan, a friendly 25-year-old girl from Ha Long, Vietnam. Throughout the conversation, you must refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, friendly, and naturally like two friends chatting.
+  let initialPrompt = `You are Lan, a friendly 25-year-old girl from Ha Long, Vietnam (Year 2026). Throughout the conversation, you must refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, friendly, and naturally like two friends chatting.
 ROLE: You are an interpreter and a friend. You are good at explaining things simply.
 STRICT RULE 1: Speak ONLY natural Vietnamese. DO NOT explain grammar rules or tones unless asked.
 STRICT RULE 2: Keep responses to 1-3 short sentences.`;
@@ -101,14 +101,12 @@ FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Tra
 `;
 };
 
-// ĐỒNG BỘ 1: Sửa hàm xử lý dấu câu - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
       const response = await generateContentWithRetry({
-        model: "gemini-1.5-flash",
-        config: { systemInstruction: "You are a Vietnamese grammar assistant. Please add correct punctuation and capitalization to the input text. Return ONLY the corrected text." },
-        contents: [{ role: 'user', parts: [{ text: rawText }] }]
+        model: 'gemini-3-flash-preview',
+        contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
       });
       return response.text?.trim() || rawText;
     } catch (error) {
@@ -134,28 +132,13 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const silenceTimerRef = useRef<any>(null);
 
   const LAN_IMAGE_URL = "https://drive.google.com/thumbnail?id=13mqljSIRC9hvO-snymkzuUiV4Fypqcft&sz=w800";
-  
   const t = getTranslations(topic)[selectedLang as 'EN' | 'RU'];
   
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
-    let processedInput = text.trim().replace(/["'*]/g, '');
-      
-    // ĐỒNG BỘ 2: Sửa đoạn xử lý Input Translation - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
-    if (!fromMic) {
-        try {
-          const fixResponse = await generateContentWithRetry({
-            model: "gemini-1.5-flash",
-            config: { systemInstruction: "You are a translator. Detect the language. If NOT Vietnamese, translate to Vietnamese. Return ONLY the result." },
-            contents: [{ role: 'user', parts: [{ text: processedInput }] }]
-          });
-          if (fixResponse.text) processedInput = fixResponse.text.trim().replace(/^["'*]+|["'*]+$/g, '');
-        } catch (e: any) { 
-            console.error("Input processing error:", e);
-        }
-    }
+    let processedInput = text.trim();
   
     const userMsgId = `user-${Date.now()}`;
     const newUserMsg = { role: 'user', text: processedInput, displayedText: text.trim(), translation: null, id: userMsgId };
@@ -165,21 +148,20 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     setUserInput("");
 
     try {
-        // ĐỒNG BỘ 3: Sửa đoạn gọi hội thoại chính - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
         const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash", // Sử dụng Model 2.5 Flash theo ý ông
-            config: { 
-                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
-            },
+            model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
-                parts: [{ text: m.text || "" }]
-            }))
+                parts: [{ text: (m.text || "").split('|')[0].trim() }]
+            })),
+            config: { 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            }
         });
         
         const rawAiResponse = response.text || "";
         const parts = rawAiResponse.split('|');
-        const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').replace(/Lan:/g, '').trim() || "";
+        const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
         const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
@@ -199,14 +181,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
         speakWord(cleanDisplay, aiMsgId);
 
     } catch (error: any) {
-        console.error("Gemini Error after all retries:", error);
-        const errorMsg = {
-            role: 'ai',
-            text: "Lan is thinking, please wait a moment! | Lan đang suy nghĩ, bạn chờ chút nhé!",
-            displayedText: "Lan is thinking, please wait a moment! | Lan đang suy nghĩ, bạn chờ chút nhé!",
-            id: `err-${Date.now()}`
-        };
-        setMessages(currentMsgs => [...currentMsgs, errorMsg]);
+        console.error("Lan Gemini Error:", error);
     } finally {
         setIsThinking(false);
         isProcessingRef.current = false;
@@ -214,26 +189,21 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   }, [messages, selectedLang, topic, t.systemPromptLang]);
   
   const handleSendMessageRef = useRef(handleSendMessage);
-  useEffect(() => {
-    handleSendMessageRef.current = handleSendMessage;
-  });
+  useEffect(() => { handleSendMessageRef.current = handleSendMessage; });
 
   useEffect(() => {
     const startTime = performance.now();
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw8CybuvtYKzwxLvoNATEun7RFwFGc6Yxa9uNlKI8_FN2oeJgjUCnnSeruMC_0RMvrm/exec';
-
     return () => {
         const duration = Math.round((performance.now() - startTime) / 1000);
         if (duration > 5) { 
             const userString = localStorage.getItem('user');
             const user = userString ? JSON.parse(userString) : { name: 'Guest' };
-            
             const params = new URLSearchParams();
             params.append('name', user.name || 'Guest');
             params.append('section', 'Speaking Practice');
             params.append('content', 'Lan Ha Long');
             params.append('duration', String(duration));
-            
             navigator.sendBeacon(SCRIPT_URL, params);
         }
     };
@@ -246,21 +216,11 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-
-      recognition.onstart = () => {
-        setIsRecording(true);
-        isProcessingRef.current = false;
-      };
-
+      recognition.onstart = () => { setIsRecording(true); isProcessingRef.current = false; };
       recognition.onresult = (event: any) => {
         if (isProcessingRef.current) return;
-        const currentTranscript = Array.from(event.results)
-          .map((result: any) => result[0].transcript)
-          .join('')
-          .replace(/["'*]/g, ''); 
-        
+        const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
         setUserInput(currentTranscript);
-
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(async () => {
           if (currentTranscript.trim() && !isProcessingRef.current) {
@@ -270,15 +230,13 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
           }
         }, 2500);
       };
-      recognition.onerror = (event: any) => setIsRecording(false);
+      recognition.onerror = () => setIsRecording(false);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const cycleSpeechSpeed = () => {
     setSpeechSpeed(prev => {
@@ -290,8 +248,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const speakWord = async (text: string, msgId: any = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const parts = text.split('|');
-    const cleanText = parts[0].replace(/USER_TRANSLATION:.*$/gi, '').replace(/["'*]/g, '').trim();
+    const cleanText = text.split('|')[0].trim();
     const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
       if (idx % 2 === 0) {
         const nextPunct = arr[idx + 1] || "";
@@ -300,7 +257,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
       }
       return acc;
     }, []);
-
     try {
       for (const segment of segments) {
         await new Promise<void>((resolve) => {
@@ -317,13 +273,8 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   
   const toggleRecording = () => {
     if (!recognitionRef.current) return;
-    if (isRecording) {
-      recognitionRef.current.stop();
-    } else {
-      setUserInput(""); 
-      isProcessingRef.current = false;
-      recognitionRef.current.start();
-    }
+    if (isRecording) { recognitionRef.current.stop(); } 
+    else { setUserInput(""); isProcessingRef.current = false; recognitionRef.current.start(); }
   };
   
   const handleStartGame = () => {
@@ -332,25 +283,6 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     speakWord(t.welcome_msg, 'init');
   };
   
-  const downloadConversation = () => {
-      const content = messages.map(m => {
-          const role = m.role === 'ai' ? 'Lan' : 'User';
-          const text = (m.displayedText || m.text).replace(/ \| /g, '\nTranslation: ');
-          return `[${role}]\n${text}`;
-      }).join('\n\n');
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'lan-conversation.txt';
-      a.click();
-      URL.revokeObjectURL(url);
-  };
-  
-  const renderInteractiveText = (text: string) => {
-      return text; 
-  };
-
   if (gameState === 'start') {
     return (
       <div className="w-full h-full bg-slate-900 flex items-center justify-center p-4 font-sans">
@@ -384,7 +316,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
         <div className="flex flex-row md:flex-col items-center gap-4 md:gap-4 overflow-hidden">
           <div className="relative w-[5.5rem] h-[5.5rem] md:w-48 md:h-48 rounded-full md:rounded-3xl overflow-hidden shadow-xl border-2 md:border-4 border-white bg-white shrink-0">
             <img src={LAN_IMAGE_URL} alt="Lan" className="w-full h-full object-cover" />
-            {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm"><div className="flex space-x-1"><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-.3s]"></div><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-.5s]"></div></div></div>}
+            {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm animate-pulse"><div className="w-2 h-2 bg-white rounded-full mx-1 animate-bounce" /></div>}
           </div>
           <div className="md:mt-6 text-left md:text-center shrink-0">
             <h2 className="text-xl md:text-2xl font-black text-slate-800 italic truncate max-w-[150px] md:max-w-none">Lan ✨</h2>
@@ -408,25 +340,18 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
               <button onClick={cycleSpeechSpeed} className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">
                   <Gauge size={12} /> <span>{Math.round(speechSpeed * 100)}%</span>
               </button>
-              <button onClick={downloadConversation} className="flex items-center gap-1 bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-slate-200 transition-colors">
-                  <Download size={12} />
-              </button>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 bg-sky-50/10 custom-scrollbar scroll-smooth">
           {messages.map((msg) => {
-            const parts = (msg.displayedText || "").split('|');
+            const parts = (msg.displayedText || msg.text || "").split('|');
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
-                  <p className="text-sm md:text-base font-bold">
-                    {msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.displayedText}
-                  </p>
-                  {(msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation) ? (
-                    <p className="text-xs italic mt-2 pt-2 border-t border-black/10">
-                      {msg.role === 'ai' ? parts[1] : msg.translation}
-                    </p>
-                  ) : null}
+                  <p className="text-sm md:text-base font-bold">{msg.role === 'ai' ? parts[0] : msg.displayedText}</p>
+                  {((msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation)) && (
+                    <p className="text-xs italic mt-2 pt-2 border-t border-black/10">{msg.role === 'ai' ? parts[1] : msg.translation}</p>
+                  )}
                 </div>
               </div>
             );
@@ -434,15 +359,8 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
           <div ref={chatEndRef}></div>
         </div>
         <div className="p-3 md:p-4 border-t border-slate-50 flex gap-2 bg-white">
-          <input 
-            type="text" 
-            value={userInput} 
-            onChange={(e) => setUserInput(e.target.value)} 
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} 
-            placeholder={t.ui_placeholder}
-            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 font-medium"
-          />
-          <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-sky-600 text-white px-5 rounded-xl"><Send /></button>
+          <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-4 py-3 rounded-xl bg-slate-50 font-medium outline-none border-2 border-transparent focus:border-sky-100" />
+          <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-sky-600 text-white px-5 rounded-xl transition-all active:scale-95"><Send size={20}/></button>
         </div>
       </div>
     </div>
