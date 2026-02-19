@@ -58,7 +58,7 @@ const getTranslations = (topic?: string | null) => {
       RU: {
         label: "Русский",
         ui_welcome: "Привет! Я Лан. Давай дружить!",
-        ui_start: "НАЧАТЬ CHAT",
+        ui_start: "НАCHАТЬ CHAT",
         ui_placeholder: "Пишите на любом языке...",
         ui_recording: "СЛУШАЮ...",
         ui_tapToTalk: "Нажмите, để nói tiếng Việt",
@@ -101,14 +101,16 @@ FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Tra
 `;
 };
 
-// ĐỒNG BỘ 1: Sửa hàm xử lý dấu câu
+// ĐỒNG BỘ 1: Sửa hàm xử lý dấu câu - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
-      const response = await generateContentWithRetry(
-        `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
-      );
-      return typeof response === 'string' ? response.trim() : (response.text?.trim() || rawText);
+      const response = await generateContentWithRetry({
+        model: "gemini-1.5-flash",
+        config: { systemInstruction: "You are a Vietnamese grammar assistant. Please add correct punctuation and capitalization to the input text. Return ONLY the corrected text." },
+        contents: [{ role: 'user', parts: [{ text: rawText }] }]
+      });
+      return response.text?.trim() || rawText;
     } catch (error) {
       console.error("Punctuation error:", error);
       return rawText;
@@ -141,13 +143,15 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     setIsThinking(true);
     let processedInput = text.trim().replace(/["'*]/g, '');
       
-    // ĐỒNG BỘ 2: Sửa đoạn xử lý Input Translation giống Chatbot
+    // ĐỒNG BỘ 2: Sửa đoạn xử lý Input Translation - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
     if (!fromMic) {
         try {
-          const prompt = `Detect the language of this message: "${processedInput}". If it's NOT Vietnamese, translate it accurately to Vietnamese. Return ONLY the Vietnamese result text without any quotes, stars, or explanations.`;
-          const fixResponse = await generateContentWithRetry(prompt);
-          const aiResult = typeof fixResponse === 'string' ? fixResponse : fixResponse.text;
-          if (aiResult) processedInput = aiResult.trim().replace(/^["'*]+|["'*]+$/g, '');
+          const fixResponse = await generateContentWithRetry({
+            model: "gemini-1.5-flash",
+            config: { systemInstruction: "You are a translator. Detect the language. If NOT Vietnamese, translate to Vietnamese. Return ONLY the result." },
+            contents: [{ role: 'user', parts: [{ text: processedInput }] }]
+          });
+          if (fixResponse.text) processedInput = fixResponse.text.trim().replace(/^["'*]+|["'*]+$/g, '');
         } catch (e: any) { 
             console.error("Input processing error:", e);
         }
@@ -161,17 +165,19 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     setUserInput("");
 
     try {
-        // ĐỒNG BỘ 3: Sửa đoạn gọi hội thoại chính
-        // Gom lịch sử vào một prompt duy nhất để dễ dàng xoay vòng key
-        const historyText = currentHistory.map(m => 
-            `${m.role === 'ai' ? 'Lan' : 'User'}: ${(m.text || "").split('|')[0].trim()}`
-        ).join('\n');
-
-        const mainPrompt = `${getSystemPrompt(t.systemPromptLang, topic)}\n\nConversation history:\n${historyText}\n\nLan:`;
-
-        const response = await generateContentWithRetry(mainPrompt);
+        // ĐỒNG BỘ 3: Sửa đoạn gọi hội thoại chính - TRUYỀN ĐÚNG CẤU TRÚC OBJECT
+        const response = await generateContentWithRetry({
+            model: "gemini-2.5-flash", // Sử dụng Model 2.5 Flash theo ý ông
+            config: { 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            },
+            contents: currentHistory.map(m => ({
+                role: m.role === 'ai' ? 'model' : 'user',
+                parts: [{ text: m.text || "" }]
+            }))
+        });
         
-        const rawAiResponse = typeof response === 'string' ? response : (response.text || "");
+        const rawAiResponse = response.text || "";
         const parts = rawAiResponse.split('|');
         const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').replace(/Lan:/g, '').trim() || "";
         const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
