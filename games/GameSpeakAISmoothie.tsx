@@ -26,25 +26,44 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   const recognitionRef = useRef<any>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const isProcessingRef = useRef(false);
+  // Thêm audioRef để quản lý Google TTS
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- FULLSCREEN ---
   const toggleFullscreen = () => {
     if (!gameContainerRef.current) return;
-    if (!document.fullscreenElement) gameContainerRef.current.requestFullscreen();
-    else document.exitFullscreen();
+    if (!document.fullscreenElement) {
+      gameContainerRef.current.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
   };
 
-  // --- TTS (WEB SPEECH) ---
+  // --- TTS (GOOGLE TRANSLATE ENGINE) ---
   const speakWord = (text: string, msgId: string | null = null) => {
-    if (!text) return;
+    if (!text || !audioRef.current) return;
     if (msgId) setActiveVoiceId(msgId);
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'vi-VN';
-    utterance.rate = speechRate;
-    utterance.onend = () => setActiveVoiceId(null);
-    window.speechSynthesis.speak(utterance);
+    
+    // Dừng âm thanh cũ
+    audioRef.current.pause();
+    
+    // Làm sạch text khỏi ký tự đặc biệt
+    const cleanText = text.replace(/[*_`#|]/g, '').trim();
+    // Tạo URL Google Translate TTS (Việt Nam)
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+    
+    audioRef.current.src = ttsUrl;
+    audioRef.current.playbackRate = speechRate;
+    audioRef.current.onended = () => setActiveVoiceId(null);
+    audioRef.current.play().catch(e => console.error("Audio Play Error:", e));
   };
+
+  // Khởi tạo Audio Engine khi component mount
+  useEffect(() => {
+    audioRef.current = new Audio();
+  }, []);
 
   // --- RECOGNITION ---
   useEffect(() => {
@@ -56,7 +75,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        handleSendMessage(text, true); // Gọi hàm với flag fromMic
+        handleSendMessage(text, true); 
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
@@ -69,9 +88,14 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
     isProcessingRef.current = true;
     setIsThinking(true);
 
+    // Mồi âm thanh trống để xin quyền Autoplay từ trình duyệt ngay khi user tương tác
+    if (audioRef.current) {
+        audioRef.current.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        audioRef.current.play().catch(() => {});
+    }
+
     let processedInput = text.trim();
 
-    // SỬA CHỖ 1: Xử lý văn bản từ giọng nói qua /api/chat
     if (fromMic) {
       try {
         const voiceReformResponse = await fetch('/api/chat', {
@@ -91,7 +115,6 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
     setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
     setUserInput("");
 
-    // SỬA CHỖ 2: Nhập vai nhân vật Xuân qua /api/chat
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -113,7 +136,6 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
 
       const data = await response.json();
       if (data.text) {
-        // Loại bỏ phần dịch nếu AI lỡ tay viết dấu gạch đứng
         const cleanText = data.text.split('|')[0].trim().replace(/[*]/g, '');
         const aiMsgId = `ai-${Date.now()}`;
         setMessages(prev => [...prev, { role: 'ai', text: cleanText, id: aiMsgId }]);
