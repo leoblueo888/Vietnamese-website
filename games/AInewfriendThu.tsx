@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge, Maximize, Minimize } from 'lucide-react';
 import type { AIFriend } from '../types';
+// THAY ĐỔI 1: Cập nhật Import để lấy key từ config tập trung
 import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
@@ -15,7 +16,7 @@ const DICTIONARY = {
   "chùa một cột": { EN: "One Pillar Pagoda", RU: "Пагода на одном столбе" },
   "phở": { EN: "Phở (Noodle Soup)", RU: "Фо (Суп)" },
   "bún chả": { EN: "Bún Chả (Grilled Pork)", RU: "Бун Cha" },
-  "bánh mì": { EN: "Bánh Mì (Sandwich)", RU: "Бань Ми" },
+  "banh mì": { EN: "Bánh Mì (Sandwich)", RU: "Бань Ми" },
   "cà phê muối": { EN: "Salt Coffee", RU: "Соленый кофе" },
   "cà phê trứng": { EN: "Egg Coffee", RU: "Кофе с яйцом" },
   "nem rán": { EN: "Spring Rolls", RU: "Нем (Роллы)" },
@@ -173,19 +174,20 @@ Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Briefly sum
 `;
 };
 
+// THAY ĐỔI 2: Sửa cấu trúc gọi API trong punctuateText
 const punctuateText = async (rawText: string) => {
   if (!rawText.trim()) return rawText;
   try {
     const response = await generateContentWithRetry({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả): "${rawText}"` }] }]
+      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
     });
     return response.text?.trim() || rawText;
   } catch (error) {
+    console.error("Lỗi khi thêm dấu câu:", error);
     return rawText;
   }
 };
-
 
 export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
   const [gameState, setGameState] = useState('start'); 
@@ -204,7 +206,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  const THU_IMAGE_URL = "https://i.ibb.co/L5pYFmX/thu-hanoi.png";
+  const THU_IMAGE_URL = "https://lh3.googleusercontent.com/d/1aJFCfbbdfLmo0-c4NtNtHtFNWQiMXpLz";
   const t = getTranslations(topic)[selectedLang];
   
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
@@ -221,13 +223,16 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     setUserInput("");
     
     try {
+        // THAY ĐỔI 3: Sửa cấu trúc gọi API trong handleSendMessage
         const response = await generateContentWithRetry({
             model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
-            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
+            config: { 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            }
         });
         
         const rawAiResponse = response.text || "";
@@ -387,7 +392,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-emerald-500 shadow-md">
             <img src={THU_IMAGE_URL} alt="Thu" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic">Thu: New Friend 🌸</h1>
+          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic">Thu: New Friend</h1>
           <p className="text-slate-500 mb-8 italic">"Dạ, Thu chào anh. Thu rất vui được làm bạn với anh."</p>
           <div className="space-y-6">
             <div className="flex justify-center space-x-3">
