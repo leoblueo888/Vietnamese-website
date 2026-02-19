@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Sparkles, Lightbulb, Wand2, Gauge } from 'lucide-react';
 import type { AIFriend } from '../types';
+// THAY ĐỔI 1: Sửa cách lấy key từ apiKeys.ts
 import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
@@ -71,12 +72,11 @@ const getTranslations = (topic?: string | null) => {
     
     if (topic) {
         t.EN.welcome_msg = `Chào ${userPronoun} ${userName}, tôi thấy ${userPronoun} vừa học xong chủ đề "${topic}". Tôi và ${userPronoun} cùng trò chuyện về chủ đề này nhé? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
-        t.RU.welcome_msg = `Здравствуйте ${userName}, я вижу, вы chỉ mới hoàn thành chủ đề "${topic}". Chúng ta hãy thảo luận về nó chứ? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
+        t.RU.welcome_msg = `Здравствуйте ${userName}, tôi thấy ${userPronoun} vừa học xong chủ đề "${topic}". Tôi và ${userPronoun} cùng trò chuyện về chủ đề này nhé? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
     }
 
     return t;
 };
-
 
 const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
     const userString = localStorage.getItem('user');
@@ -108,7 +108,6 @@ PERSONALITY:
 5. FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]
 `;
 };
-
 
 export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
   const [gameState, setGameState] = useState('start'); 
@@ -147,13 +146,16 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     setUserInput("");
 
     try {
+        // THAY ĐỔI 2 & 3: Sửa cấu trúc gọi API config và systemInstruction
         const response = await generateContentWithRetry({
             model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{text: (m.text || "").split('|')[0].trim()}]
             })),
-            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
+            config: { 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            }
         });
         
         const rawAiResponse = response.text || "";
