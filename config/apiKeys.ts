@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 /**
  * 1. HỆ THỐNG 10 KEYS XOAY VÒNG
- * Đã lọc bỏ các key trống để tránh lỗi undefined khi gọi API
+ * Đã tối ưu để chạy trên Vercel/GitHub Pages với tiền tố VITE_
  */
 const API_KEYS = [
   import.meta.env.VITE_GEMINI_KEY_1,
@@ -28,53 +28,55 @@ export const getNextApiKey = () => {
 };
 
 /**
- * 2. HÀM GỌI API GEMINI 3 FLASH (NÃO BỘ TRUNG TÂM)
- * Hàm này sẽ nhận lệnh từ các game và điều phối 10 keys
+ * 2. HÀM TRUNG TÂM GỌI MODEL 2.5 FLASH
+ * Đảm bảo lấy đúng "Não" 2.5 cho tất cả các game
  */
 export const generateContentWithRetry = async (payload: {
   model?: string;
   config: { systemInstruction: string };
   contents: any[];
 }) => {
+  if (API_KEYS.length === 0) {
+    throw new Error("LỖI: Không tìm thấy API Key nào. Hãy kiểm tra VITE_GEMINI_KEY_x");
+  }
+
   let lastError;
   
-  // Thử lần lượt các Key nếu gặp lỗi
   for (let i = 0; i < API_KEYS.length; i++) {
     try {
       const apiKey = getNextApiKey();
-      if (!apiKey) throw new Error("No API Key found in environment variables.");
-
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const genAI = new GoogleGenerativeAI(apiKey!);
       
-      // Sử dụng model gemini-3-flash-preview theo yêu cầu của ông
-      // Nếu payload truyền vào một model khác, nó sẽ ưu tiên cái đó
+      // SỬ DỤNG ĐÚNG MODEL 2.5 FLASH THEO Ý ÔNG
+      const modelName = payload.model || "gemini-2.5-flash"; 
+      
       const model = genAI.getGenerativeModel({ 
-        model: payload.model || "gemini-3-flash-preview", 
+        model: modelName,
         systemInstruction: payload.config.systemInstruction
       });
 
-      // Thực hiện gọi API với dữ liệu hội thoại (History)
       const result = await model.generateContent({
         contents: payload.contents,
       });
 
       const response = await result.response;
-      
-      // Trả về định dạng chuẩn để Frontend xử lý
+      const text = response.text();
+
+      if (!text) throw new Error("AI trả về nội dung rỗng");
+
       return {
-        text: response.text(),
-        audio: null // Vẫn giữ null để Frontend tự kích hoạt Google TTS (ổn định nhất)
+        text: text,
+        audio: null // Giữ nguyên null để game dùng Google TTS cho ổn định
       };
 
     } catch (error: any) {
       lastError = error;
-      console.warn(`Key index ${currentKeyIndex} gặp lỗi, đang đổi key...`, error.message);
+      console.warn(`Key ${currentKeyIndex} lỗi: ${error.message}`);
       
-      // Nếu lỗi 429 (Hết hạn mức) hoặc 404 (Sai tên model ở key đó), đổi key ngay
-      if (error.message?.includes('429') || error.message?.includes('404') || error.message?.includes('quota')) {
+      // Nếu lỗi 404 (sai tên model) hoặc 429 (hết lượt), đổi sang key khác
+      if (error.message?.includes('404') || error.message?.includes('429') || error.message?.includes('quota')) {
         continue;
       } else {
-        // Nếu lỗi logic hoặc cấu trúc prompt, dừng lại để tránh phí lượt thử
         throw error; 
       }
     }
