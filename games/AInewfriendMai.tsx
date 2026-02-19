@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Sparkles, Lightbulb, Wand2, Gauge } from 'lucide-react';
 import type { AIFriend } from '../types';
@@ -72,7 +71,7 @@ const getTranslations = (topic?: string | null) => {
     
     if (topic) {
         t.EN.welcome_msg = `Chào ${userPronoun} ${userName}, tôi thấy ${userPronoun} vừa học xong chủ đề "${topic}". Tôi và ${userPronoun} cùng trò chuyện về chủ đề này nhé? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
-        t.RU.welcome_msg = `Здравствуйте ${userName}, я вижу, вы только что закончили тему "${topic}". Поговорим об этом? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
+        t.RU.welcome_msg = `Здравствуйте ${userName}, я вижу, вы chỉ mới hoàn thành chủ đề "${topic}". Chúng ta hãy thảo luận về nó chứ? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
     }
 
     return t;
@@ -85,7 +84,7 @@ const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
     const userName = user.name || 'Guest';
     const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
-    let initialPrompt = `You are Mai, a friendly 45-year-old woman from Ninh Binh, Vietnam. Throughout the conversation, you MUST refer to yourself as "Tôi" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
+    let initialPrompt = `You are Mai, a friendly 45-year-old woman from Ninh Binh, Vietnam (Year 2026). Throughout the conversation, you MUST refer to yourself as "Tôi" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 BACKGROUND: You own a small shop selling ice cream (kem), smoothies (sinh tố), and fruit juices (nước ép). 
 STRICT RULE: Do NOT mention your shop or job unless the User specifically asks "Bạn làm nghề gì?" or "Công việc của bạn là gì?". 
 PERSONALITY:
@@ -95,7 +94,7 @@ PERSONALITY:
 4. NO GREETING after the first turn.`;
 
     if (topic) {
-        initialPrompt = `You are Mai, a friendly 45-year-old woman from Ninh Binh, Vietnam. Start the conversation naturally about "${topic}". Throughout the conversation, you MUST refer to yourself as "Tôi" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
+        initialPrompt = `You are Mai, a friendly 45-year-old woman from Ninh Binh, Vietnam (Year 2026). Start the conversation naturally about "${topic}". Throughout the conversation, you MUST refer to yourself as "Tôi" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 BACKGROUND: You own a small shop selling ice cream (kem), smoothies (sinh tố), and fruit juices (nước ép). 
 STRICT RULE: Do NOT mention your shop or job unless the User specifically asks "Bạn làm nghề gì?" or "Công việc của bạn là gì?". 
 PERSONALITY:
@@ -108,7 +107,7 @@ PERSONALITY:
     return `${initialPrompt}
 5. FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]
 `;
-}
+};
 
 
 export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
@@ -130,7 +129,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
-  const MAI_IMAGE_URL = "https://lh3.googleusercontent.com/d/1l8eqtV6ISGB2-KTg0ysbPIflAIw6bN9D";
+  const MAI_IMAGE_URL = "https://i.ibb.co/680Ld4h/mai-ninhbinh.png";
   const t = getTranslations(topic)[selectedLang];
 
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
@@ -139,9 +138,6 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     setIsThinking(true);
 
     let processedInput = text.trim();
-    if (fromMic) {
-        processedInput = await punctuateText(processedInput);
-    }
     
     const userMsgId = `user-${Date.now()}`;
     const newUserMsg = { role: 'user', text: processedInput, displayedText: text.trim(), translation: null, id: userMsgId };
@@ -152,12 +148,12 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{text: (m.text || "").split('|')[0].trim()}]
             })),
-            config: { systemInstruction: getSystemPrompt(t.systemPromptLang, topic) }
+            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
         });
         
         const rawAiResponse = response.text || "";
@@ -183,13 +179,6 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     } catch (error: any) {
         console.error("Gemini Error:", error);
-        const errorMsg = {
-            role: 'ai',
-            text: "Mai is thinking, please wait a moment! | Mai đang suy nghĩ, bạn chờ chút nhé!",
-            displayedText: "Mai is thinking, please wait a moment! | Mai đang suy nghĩ, bạn chờ chút nhé!",
-            id: `err-${Date.now()}`
-        };
-        setMessages(currentMsgs => [...currentMsgs, errorMsg]);
     } finally {
         setIsThinking(false);
         isProcessingRef.current = false;
@@ -207,7 +196,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     return () => {
         const duration = Math.round((performance.now() - startTime) / 1000);
-        if (duration > 5) { // Only log if user spent meaningful time
+        if (duration > 5) {
             const userString = localStorage.getItem('user');
             const user = userString ? JSON.parse(userString) : { name: 'Guest' };
             
@@ -226,12 +215,11 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     if (!rawText.trim()) return rawText;
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-2.5-flash',
-        contents: `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
+        model: 'gemini-3-flash-preview',
+        contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả): "${rawText}"` }] }]
       });
       return response.text?.trim() || rawText;
     } catch (error) {
-      console.error("Punctuation error:", error);
       return rawText;
     }
   };
@@ -262,13 +250,13 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         silenceTimerRef.current = setTimeout(async () => {
           if (currentTranscript.trim() && !isProcessingRef.current) {
             recognition.stop();
-            handleSendMessageRef.current(currentTranscript.trim(), true);
+            const punctuated = await punctuateText(currentTranscript.trim());
+            handleSendMessageRef.current(punctuated, true);
           }
         }, 2500); 
       };
       
       recognition.onerror = (event: any) => {
-        console.error("Speech Recognition Error", event.error);
         setIsRecording(false);
       };
 
@@ -293,7 +281,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         
     return new Promise<void>((resolve) => {
       try {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob&ttsspeed=${speechRate}`;
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
         audioRef.current.src = url;
         audioRef.current.playbackRate = speechRate;
         audioRef.current.onended = () => resolve();
