@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Minimize, Globe } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Globe } from 'lucide-react';
 import type { AIFriend } from '../types';
+// Sử dụng hệ thống xoay vòng Key để tối ưu tầng Free
+import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- DICTIONARY DATA ---
 const DICTIONARY = {
@@ -42,7 +44,7 @@ const LANGUAGES = {
     ui_placeholder: "Talk to Thanh here...",
     ui_status: "Online - Expert Merchant",
     ui_learning_title: "Chat with Thanh Merchant",
-    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Hi! I have all kinds of fresh meat and seafood, do you want to buy meat or seafood? ✨",
+    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Hi! I have all kinds of fresh meat and seafood at market prices, what would you like? ✨",
     systemPromptLang: "English"
   },
   RU: {
@@ -52,7 +54,7 @@ const LANGUAGES = {
     ui_placeholder: "Поговори с Тхань здесь...",
     ui_status: "В сети - Эксперт по рынку",
     ui_learning_title: "Общение с продавцом",
-    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Привет! У меня есть все виды свежего мяса и морепродуктов, вы хотите купить мясо или морепродукты? ✨",
+    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Привет! У меня есть все виды свежего мяса и морепродуктов по рыночным ценам, что вы хотите? ✨",
     systemPromptLang: "Russian"
   }
 };
@@ -72,7 +74,6 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
-  const isProcessingRef = useRef(false);
 
   const t = LANGUAGES[selectedLang];
 
@@ -86,7 +87,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        handleSendMessage(text, true);
+        handleSendMessage(text);
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
@@ -108,66 +109,51 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     audioRef.current.play().catch(() => setActiveVoiceId(null));
   };
 
-  // --- AI ENGINE ---
-  const handleSendMessage = async (text: string, fromMic = false) => {
-    if (!text.trim() || isProcessingRef.current) return;
-    isProcessingRef.current = true;
-    setIsThinking(true);
+  // --- AI ENGINE WITH KEY ROTATION ---
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isThinking) return;
     
-    let processedInput = text.trim();
-
-    // CHỖ DÙNG MODEL 1: Xử lý lại văn bản từ giọng nói
-    if (fromMic) {
-      try {
-        const voiceReformResponse = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Sửa lỗi chính tả và làm cho câu sau tự nhiên hơn: "${processedInput}"`,
-            systemPrompt: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không nói thêm gì khác."
-          })
-        });
-        const voiceData = await voiceReformResponse.json();
-        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
-      } catch (e) { console.error("Lỗi sửa voice:", e); }
-    }
-
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
+    setMessages(prev => [...prev, { role: 'user', text: text, id: userMsgId }]);
     setUserInput("");
+    setIsThinking(true);
 
-    // CHỖ DÙNG MODEL 2: Nhập vai nhân vật Thanh
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: processedInput, 
-          history: messages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })),
-          systemPrompt: `
-            BỐI CẢNH: Bạn tên là Thanh (25 tuổi), chuyên gia bán hải sản và thịt tươi sống tại chợ.
-            PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn.
-            ĐỊNH DẠNG: Tiếng Việt | Dịch sang ${t.systemPromptLang}.
+      const payload = {
+        model: "gemini-3-flash-preview",
+        config: {
+          systemInstruction: `
+            BỐI CẢNH: Bạn tên là Thanh (25 tuổi), một tiểu thương niềm nở, lanh lợi tại chợ hải sản và thịt tươi sống.
+            NHIỆM VỤ: Tư vấn các loại thịt (bò, heo, gà, vịt, cừu) và hải sản (tôm hùm, cua, cá hồi, mực, nghêu, ốc).
+            PHONG CÁCH: Năng động, khéo léo chốt đơn, luôn ưu tiên đồ tươi sống.
+            ĐỊNH DẠNG PHẢN HỒI: "Câu tiếng Việt tự nhiên | Dịch sang ${t.systemPromptLang}".
             QUY TẮC:
-            1. Xưng "Em" - gọi "Anh/Chị". Luôn dùng "Dạ", "ạ", "nha".
-            2. Quy trình bán hàng: Chào hỏi -> Gợi ý đồ tươi hôm nay -> Báo giá và tư vấn cách nấu.
-            3. Tuyệt đối không dùng ký tự *. Trả lời ngắn gọn, đúng trọng tâm bán hàng.
+            1. Luôn xưng "Em" và gọi khách là "Anh/Chị".
+            2. Sử dụng các từ ngữ địa phương chợ búa nhưng lịch sự như: "Dạ", "ạ", "nha", "ngon hết sảy", "tươi rói".
+            3. Tư vấn giá cả (giả định) và cách chế biến món ăn ngon từ loại thịt/hải sản khách hỏi.
+            4. Không sử dụng ký tự đặc biệt như *. Trả lời tối đa 3 câu.
           `
-        })
-      });
+        },
+        contents: [
+          ...messages.slice(-4).map(m => ({
+            role: m.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          })),
+          { role: 'user', parts: [{ text: text }] }
+        ]
+      };
 
-      const data = await response.json();
-      if (data.text) {
-        const aiMsgId = `ai-${Date.now()}`;
-        const cleanAIData = data.text.replace(/[*]/g, '');
-        setMessages(prev => [...prev, { role: 'ai', text: cleanAIData, id: aiMsgId }]);
-        speak(cleanAIData, aiMsgId);
-      }
+      const response = await generateContentWithRetry(payload);
+      const aiText = response.text || (selectedLang === 'RU' ? "Извините, я не поняла | Em chưa rõ ý Anh ạ." : "Sorry, I didn't get that | Em chưa rõ ý Anh ạ.");
+      
+      const aiMsgId = `ai-${Date.now()}`;
+      setMessages(prev => [...prev, { role: 'ai', text: aiText, id: aiMsgId }]);
+      speak(aiText, aiMsgId);
+
     } catch (e) {
-      console.error(e);
+      console.error("Lỗi AI Thanh:", e);
     } finally {
       setIsThinking(false);
-      isProcessingRef.current = false;
     }
   };
 
