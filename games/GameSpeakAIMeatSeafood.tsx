@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize, Globe } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Minimize, Globe } from 'lucide-react';
 import type { AIFriend } from '../types';
 
 // --- DICTIONARY DATA ---
@@ -43,6 +43,7 @@ const LANGUAGES = {
     ui_status: "Online - Expert Merchant",
     ui_learning_title: "Chat with Thanh Merchant",
     welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Hi! I have all kinds of fresh meat and seafood, do you want to buy meat or seafood? ✨",
+    systemPromptLang: "English"
   },
   RU: {
     label: "Русский",
@@ -52,6 +53,7 @@ const LANGUAGES = {
     ui_status: "В сети - Эксперт по рынку",
     ui_learning_title: "Общение с продавцом",
     welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Привет! У меня есть все виды свежего мяса и морепродуктов, вы хотите купить мясо или морепродукты? ✨",
+    systemPromptLang: "Russian"
   }
 };
 
@@ -71,7 +73,6 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
   const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
-  const silenceTimerRef = useRef<number | null>(null);
 
   const t = LANGUAGES[selectedLang];
 
@@ -80,76 +81,87 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.continuous = false;
       recognition.lang = 'vi-VN';
-      recognition.onresult = (event: any) => {
-        if (isProcessingRef.current) return;
-        let final = ""; let interim = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) final += event.results[i][0].transcript;
-          else interim += event.results[i][0].transcript;
-        }
-        setUserInput(final || interim);
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = window.setTimeout(() => {
-          const text = (final || interim).trim();
-          if (text && !isProcessingRef.current) {
-            recognition.stop();
-            handleSendMessage(text);
-          }
-        }, 2000);
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onresult = (e: any) => {
+        const text = e.results[0][0].transcript;
+        handleSendMessage(text, true);
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [selectedLang]);
+  }, []);
 
   // --- TTS LOGIC ---
   const speak = async (text: string, msgId: string | null = null) => {
     if (msgId) setActiveVoiceId(msgId);
-    let cleanText = text.split('|')[0].trim();
-    // Format price for more natural speech
+    let cleanText = text.split('|')[0].trim().replace(/[*]/g, '');
     cleanText = cleanText.replace(/(\d+)\.000/g, '$1 nghìn').replace(/(\d+)k/gi, '$1 nghìn');
     
     if(!cleanText) return;
     
-    return new Promise<void>(resolve => {
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-      audioRef.current.src = url;
-      audioRef.current.playbackRate = speechRate;
-      audioRef.current.onended = () => { setActiveVoiceId(null); resolve(); };
-      audioRef.current.onerror = () => { setActiveVoiceId(null); resolve(); };
-      audioRef.current.play().catch(() => resolve());
-    });
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+    audioRef.current.src = url;
+    audioRef.current.playbackRate = speechRate;
+    audioRef.current.onended = () => setActiveVoiceId(null);
+    audioRef.current.play().catch(() => setActiveVoiceId(null));
   };
 
-  // --- AI PROXY CORE ---
-  const handleSendMessage = async (text: string) => {
+  // --- AI ENGINE ---
+  const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
     
+    let processedInput = text.trim();
+
+    // CHỖ DÙNG MODEL 1: Xử lý lại văn bản từ giọng nói
+    if (fromMic) {
+      try {
+        const voiceReformResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `Sửa lỗi chính tả và làm cho câu sau tự nhiên hơn: "${processedInput}"`,
+            systemPrompt: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không nói thêm gì khác."
+          })
+        });
+        const voiceData = await voiceReformResponse.json();
+        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
+      } catch (e) { console.error("Lỗi sửa voice:", e); }
+    }
+
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId }]);
+    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
     setUserInput("");
 
+    // CHỖ DÙNG MODEL 2: Nhập vai nhân vật Thanh
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: text, 
-          lang: selectedLang.toLowerCase(),
-          topic: "Thanh, a 25-year-old expert merchant at a Vietnamese market selling meat and seafood. Be energetic, friendly, use 'Anh/Chị' and 'Em'. Sales flow: 1. Greet & Ask what they need 2. Suggest fresh items today 3. Give price and cooking advice." 
+          message: processedInput, 
+          history: messages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })),
+          systemPrompt: `
+            BỐI CẢNH: Bạn tên là Thanh (25 tuổi), chuyên gia bán hải sản và thịt tươi sống tại chợ.
+            PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn.
+            ĐỊNH DẠNG: Tiếng Việt | Dịch sang ${t.systemPromptLang}.
+            QUY TẮC:
+            1. Xưng "Em" - gọi "Anh/Chị". Luôn dùng "Dạ", "ạ", "nha".
+            2. Quy trình bán hàng: Chào hỏi -> Gợi ý đồ tươi hôm nay -> Báo giá và tư vấn cách nấu.
+            3. Tuyệt đối không dùng ký tự *. Trả lời ngắn gọn, đúng trọng tâm bán hàng.
+          `
         })
       });
 
       const data = await response.json();
       if (data.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
-        await speak(data.text, aiMsgId);
+        const cleanAIData = data.text.replace(/[*]/g, '');
+        setMessages(prev => [...prev, { role: 'ai', text: cleanAIData, id: aiMsgId }]);
+        speak(cleanAIData, aiMsgId);
       }
     } catch (e) {
       console.error(e);
@@ -181,7 +193,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
         else if (match.info.type === "Adj") typeColor = "text-cyan-400";
 
         result.push(
-          <span key={remaining.length} className="group relative inline-block border-b border-dotted border-emerald-200 hover:border-emerald-500 cursor-help px-0.5 transition-colors">
+          <span key={remaining.length} className="group relative inline-block border-b border-dotted border-emerald-400 hover:border-emerald-600 cursor-help px-0.5 transition-colors font-bold text-emerald-900">
             {match.original}
             <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-900 text-white text-[10px] p-2 rounded-xl z-50 shadow-2xl border border-slate-700">
               <div className={`font-black uppercase text-[8px] mb-1 ${typeColor}`}>{match.info.type}</div>
@@ -255,7 +267,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
             </div>
           </div>
           
-          <button onClick={() => { setIsRecording(!isRecording); isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start(); }} className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl active:scale-90 ${isRecording ? 'bg-red-500 ring-[12px] ring-red-50' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
+          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl active:scale-90 ${isRecording ? 'bg-red-500 ring-[12px] ring-red-50' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
             {isRecording ? <MicOff color="white" size={32} /> : <Mic color="white" size={32} />}
           </button>
         </div>
@@ -292,10 +304,11 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
                 </div>
               );
             })}
+            {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse uppercase tracking-widest italic ml-4">Thanh đang nghe Anh...</div>}
             <div ref={chatEndRef} />
           </div>
 
-          <footer className="p-6 md:p-10 bg-white border-t border-slate-100 flex gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+          <footer className="p-6 md:p-10 bg-white border-t border-slate-100 flex gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] pb-10 md:pb-10">
             <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg transition-all focus:bg-white focus:ring-4 ring-emerald-50 placeholder:text-slate-300 shadow-inner" />
             <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"><Send size={24}/></button>
           </footer>
