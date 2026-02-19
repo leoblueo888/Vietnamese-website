@@ -166,6 +166,11 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
   const currentLevel = grammarLevels.find(l => l.badge === focusedLevel);
   const freeLevelsForGuest = ['ASA', 'AQA']; 
 
+  // XỬ LÝ LINK ẢNH THEO NGÔN NGỮ
+  const infographicUrl = language === 'ru' 
+    ? "https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200" 
+    : "https://drive.google.com/thumbnail?id=10cqEIBGmt-dZ53668g1NHQrIWsdUkxjF&sz=w1200";
+
   return (
     <div className="pt-24 md:pt-32 pb-32 bg-white min-h-screen">
       <div className="max-w-[1200px] mx-auto px-6">
@@ -198,7 +203,7 @@ export const GrammarPage: React.FC<GrammarPageProps> = ({ language, focusedLevel
           <div className="mb-20 max-w-5xl mx-auto">
               <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-100">
                   <img 
-                      src="https://drive.google.com/thumbnail?id=1iIjVjZcbz_Y5zoaxTaP-fSqukBB8pyXL&sz=w1200" 
+                      src={infographicUrl} 
                       alt="Grammar learning banner" 
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
