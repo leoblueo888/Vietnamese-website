@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, PlayCircle, Gauge } from 'lucide-react';
+// Sửa cách lấy key: Import trực tiếp hàm hoặc cấu hình từ apiKeys
 import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
@@ -57,7 +58,7 @@ const getTranslations = (topic?: string | null) => {
       RU: {
         label: "Русский",
         ui_welcome: "Привет! Я Лан. Давай дружить!",
-        ui_start: "НАCHАTЬ CHAT",
+        ui_start: "НАЧАТЬ CHAT",
         ui_placeholder: "Пишите на любом языке...",
         ui_recording: "СЛУШАЮ...",
         ui_tapToTalk: "Нажмите, để nói tiếng Việt",
@@ -104,11 +105,12 @@ const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"` }] }]
+        model: 'gemini-3-flash-preview',
+        contents: `Please add correct punctuation and capitalization to this Vietnamese text. Return only the corrected text: "${rawText}"`
       });
       return response.text?.trim() || rawText;
     } catch (error) {
+      console.error("Punctuation error:", error);
       return rawText;
     }
 };
@@ -129,7 +131,9 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  const LAN_IMAGE_URL = "https://i.ibb.co/p6686S6/lan-avatar.png"; 
+  // THAY ĐỔI 1: Cập nhật link ảnh Lan của bạn
+  const LAN_IMAGE_URL = "https://drive.google.com/thumbnail?id=13mqljSIRC9hvO-snymkzuUiV4Fypqcft&sz=w800";
+  
   const t = getTranslations(topic)[selectedLang as 'EN' | 'RU'];
   
   const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
@@ -140,29 +144,30 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
       
     if (!fromMic) {
         try {
-          const fixResponse = await generateContentWithRetry({
-            model: 'gemini-2.5-flash',
-            contents: [{ role: 'user', parts: [{ text: `Detect the language of this message: "${processedInput}". If it's NOT Vietnamese, translate it accurately to Vietnamese. Return ONLY the Vietnamese result text.` }] }]
-          });
-          if (fixResponse.text) processedInput = fixResponse.text.trim().replace(/^["'*]+|["'*]+$/g, '');
-        } catch (e) { console.error(e); }
+          const prompt = `Detect the language of this message: "${processedInput}". If it's NOT Vietnamese, translate it accurately to Vietnamese. Return ONLY the Vietnamese result text without any quotes, stars, or explanations.`;
+          const fixResponse = await generateContentWithRetry({model: 'gemini-3-flash-preview', contents: prompt});
+          const aiResult = fixResponse.text;
+          if (aiResult) processedInput = aiResult.trim().replace(/^["'*]+|["'*]+$/g, '');
+        } catch (e: any) { 
+            console.error("Input processing error:", e);
+        }
     }
   
     const userMsgId = `user-${Date.now()}`;
     const newUserMsg = { role: 'user', text: processedInput, displayedText: text.trim(), translation: null, id: userMsgId };
+
     const currentHistory = [...messages, newUserMsg];
     setMessages(currentHistory);
     setUserInput("");
 
     try {
-        // Đã sửa: Truyền systemInstruction trực tiếp, không bọc trong config
         const response = await generateContentWithRetry({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
-            systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            config: { systemInstruction: getSystemPrompt(t.systemPromptLang, topic) }
         });
         
         const rawAiResponse = response.text || "";
@@ -173,6 +178,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
         const cleanDisplay = `${aiVi} | ${aiTrans}`;
         const aiMsgId = `ai-${Date.now()}`;
+        const newAiMsg = { role: 'ai', text: cleanDisplay, id: aiMsgId, displayedText: cleanDisplay };
 
         setMessages(prev => {
             const updated = [...prev];
@@ -180,18 +186,52 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
             if (userIdx !== -1 && userTranslationValue) {
                 updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
             }
-            return [...updated, { role: 'ai', text: cleanDisplay, id: aiMsgId, displayedText: cleanDisplay }];
+            return [...updated, newAiMsg];
         });
 
         speakWord(cleanDisplay, aiMsgId);
+
     } catch (error: any) {
-        setMessages(currentMsgs => [...currentMsgs, { role: 'ai', text: "Lan đang suy nghĩ, bạn chờ chút nhé! | Lan is thinking, please wait...", id: `err-${Date.now()}` }]);
+        console.error("Gemini Error after all retries:", error);
+        const errorMsg = {
+            role: 'ai',
+            text: "Lan is thinking, please wait a moment! | Lan đang suy nghĩ, bạn chờ chút nhé!",
+            displayedText: "Lan is thinking, please wait a moment! | Lan đang suy nghĩ, bạn chờ chút nhé!",
+            id: `err-${Date.now()}`
+        };
+        setMessages(currentMsgs => [...currentMsgs, errorMsg]);
     } finally {
         setIsThinking(false);
         isProcessingRef.current = false;
     }
   }, [messages, selectedLang, topic, t.systemPromptLang]);
   
+  const handleSendMessageRef = useRef(handleSendMessage);
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
+
+  useEffect(() => {
+    const startTime = performance.now();
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw8CybuvtYKzwxLvoNATEun7RFwFGc6Yxa9uNlKI8_FN2oeJgjUCnnSeruMC_0RMvrm/exec';
+
+    return () => {
+        const duration = Math.round((performance.now() - startTime) / 1000);
+        if (duration > 5) { 
+            const userString = localStorage.getItem('user');
+            const user = userString ? JSON.parse(userString) : { name: 'Guest' };
+            
+            const params = new URLSearchParams();
+            params.append('name', user.name || 'Guest');
+            params.append('section', 'Speaking Practice');
+            params.append('content', 'Lan Ha Long');
+            params.append('duration', String(duration));
+            
+            navigator.sendBeacon(SCRIPT_URL, params);
+        }
+    };
+  }, []);
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -199,103 +239,206 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-      recognition.onstart = () => setIsRecording(true);
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+        isProcessingRef.current = false;
+      };
+
       recognition.onresult = (event: any) => {
-        const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
+        if (isProcessingRef.current) return;
+        const currentTranscript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('')
+          .replace(/["'*]/g, ''); 
+        
         setUserInput(currentTranscript);
+
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(async () => {
           if (currentTranscript.trim() && !isProcessingRef.current) {
             recognition.stop();
             const punctuated = await punctuateText(currentTranscript.trim());
-            handleSendMessage(punctuated, true);
+            handleSendMessageRef.current(punctuated, true);
           }
         }, 2500);
       };
-      recognition.onerror = () => setIsRecording(false);
+      recognition.onerror = (event: any) => setIsRecording(false);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [handleSendMessage]);
+  }, []);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const cycleSpeechSpeed = () => {
+    setSpeechSpeed(prev => {
+        if (prev >= 1.2) return 0.8;
+        return parseFloat((prev + 0.2).toFixed(1));
+    });
+  };
 
   const speakWord = async (text: string, msgId: any = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].replace(/["'*]/g, '').trim();
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-    audioRef.current.src = url;
-    audioRef.current.playbackRate = speechSpeed;
-    audioRef.current.onended = () => setActiveVoiceId(null);
-    audioRef.current.play().catch(() => setActiveVoiceId(null));
+    const parts = text.split('|');
+    const cleanText = parts[0].replace(/USER_TRANSLATION:.*$/gi, '').replace(/["'*]/g, '').trim();
+    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
+      if (idx % 2 === 0) {
+        const nextPunct = arr[idx + 1] || "";
+        const combined = (current + nextPunct).trim();
+        if (combined) acc.push(combined);
+      }
+      return acc;
+    }, []);
+
+    try {
+      for (const segment of segments) {
+        await new Promise<void>((resolve) => {
+          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
+          audioRef.current.src = url;
+          audioRef.current.playbackRate = speechSpeed; 
+          audioRef.current.onended = () => resolve();
+          audioRef.current.onerror = () => resolve();
+          audioRef.current.play().catch(() => resolve());
+        });
+      }
+    } catch (e) { console.error(e); } finally { if (msgId) setActiveVoiceId(null); }
   };
   
   const toggleRecording = () => {
     if (!recognitionRef.current) return;
-    isRecording ? recognitionRef.current.stop() : (setUserInput(""), recognitionRef.current.start());
+    if (isRecording) {
+      recognitionRef.current.stop();
+    } else {
+      setUserInput(""); 
+      isProcessingRef.current = false;
+      recognitionRef.current.start();
+    }
   };
   
+  const handleStartGame = () => {
+    setMessages([{ role: 'ai', text: t.welcome_msg, displayedText: t.welcome_msg, id: 'init' }]); 
+    setGameState('playing'); 
+    speakWord(t.welcome_msg, 'init');
+  };
+  
+  const downloadConversation = () => {
+      const content = messages.map(m => {
+          const role = m.role === 'ai' ? 'Lan' : 'User';
+          const text = (m.displayedText || m.text).replace(/ \| /g, '\nTranslation: ');
+          return `[${role}]\n${text}`;
+      }).join('\n\n');
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'lan-conversation.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+  };
+  
+  const renderInteractiveText = (text: string) => {
+      return text; 
+  };
+
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-4xl bg-white rounded-3xl p-12 text-center border-[10px] border-sky-100">
-          <img src={LAN_IMAGE_URL} alt="Lan" className="w-32 h-32 mx-auto mb-6 rounded-full border-4 border-sky-400 object-cover" />
-          <h1 className="text-4xl font-black text-sky-600 mb-2 italic uppercase">Ai Vietnamese : Lan 🌊</h1>
-          <p className="text-slate-400 mb-8">{t.ui_welcome}</p>
-          <div className="flex flex-col items-center space-y-6">
+      <div className="w-full h-full bg-slate-900 flex items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl flex flex-col items-center justify-center p-12 border-[10px] border-sky-100 text-center">
+          <div className="w-32 h-32 mb-6 rounded-full overflow-hidden border-4 border-sky-400 shadow-lg shrink-0">
+            <img src={LAN_IMAGE_URL} alt="Lan" className="w-full h-full object-cover" />
+          </div>
+          <h1 className="text-4xl font-black text-sky-600 mb-2 uppercase tracking-tighter italic">Ai Vietnamese Speaking : Lan 🌊</h1>
+          <p className="text-slate-400 mb-8 font-medium text-lg">{t.ui_welcome}</p>
+          <div className="flex flex-col items-center space-y-8 w-full">
             <div className="flex space-x-4">
-              {['EN', 'RU'].map(lang => (
-                <button key={lang} onClick={() => setSelectedLang(lang)} className={`px-6 py-2 rounded-xl font-bold border-2 ${selectedLang === lang ? 'bg-sky-50 border-sky-600 text-sky-600' : 'border-slate-100 text-slate-400'}`}>{getTranslations(topic)[lang as 'EN' | 'RU'].label}</button>
+              {(['EN', 'RU'] as const).map(lang => (
+                <button key={lang} onClick={() => setSelectedLang(lang)}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all border-2 ${selectedLang === lang ? 'border-sky-50 bg-sky-50 text-sky-600 ring-4 ring-sky-100' : 'border-slate-100 text-slate-400 hover:border-sky-200'}`}>
+                  {getTranslations(topic)[lang as 'EN' | 'RU'].label}
+                </button>
               ))}
             </div>
-            <button onClick={() => { setGameState('playing'); handleSendMessage(t.welcome_msg); }} className="bg-sky-600 text-white px-12 py-4 rounded-2xl font-black text-xl hover:scale-105 transition-all uppercase tracking-widest">Bắt đầu</button>
+            <button onClick={handleStartGame} className="flex items-center space-x-3 font-black py-5 px-16 rounded-2xl transition-all shadow-xl bg-sky-600 text-white hover:scale-105 active:scale-95">
+              <Play fill="white" size={20} /> <span className="text-xl tracking-widest">{t.ui_start}</span>
+            </button>
           </div>
         </div>
       </div>
     );
   }
-
+  
   return (
-    <div className="w-full h-full bg-white md:rounded-[2.5rem] flex flex-col md:flex-row overflow-hidden border-[10px] border-sky-50">
-      <div className="md:w-1/3 bg-cyan-50/40 p-6 flex flex-col items-center justify-between border-r border-sky-100">
-        <div className="text-center">
-          <div className="relative w-48 h-48 mx-auto rounded-3xl overflow-hidden shadow-xl border-4 border-white">
+    <div className="w-full h-full bg-white md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border-0 md:border-[10px] border-sky-50 font-sans">
+      <div className="h-auto md:h-full md:w-1/3 bg-cyan-50/40 p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-sky-100 shrink-0">
+        <div className="flex flex-row md:flex-col items-center gap-4 md:gap-4 overflow-hidden">
+          <div className="relative w-[5.5rem] h-[5.5rem] md:w-48 md:h-48 rounded-full md:rounded-3xl overflow-hidden shadow-xl border-2 md:border-4 border-white bg-white shrink-0">
             <img src={LAN_IMAGE_URL} alt="Lan" className="w-full h-full object-cover" />
-            {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm"><div className="w-2 h-2 bg-white rounded-full animate-bounce"></div></div>}
+            {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm"><div className="flex space-x-1"><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-.3s]"></div><div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-.5s]"></div></div></div>}
           </div>
-          <h2 className="text-2xl font-black mt-4 italic">Lan ✨</h2>
-          <p className="text-xs font-bold text-sky-500 uppercase tracking-widest">Hạ Long City 🌊</p>
+          <div className="md:mt-6 text-left md:text-center shrink-0">
+            <h2 className="text-xl md:text-2xl font-black text-slate-800 italic truncate max-w-[150px] md:max-w-none">Lan ✨</h2>
+            <p className="text-[10px] md:text-[10px] font-bold uppercase tracking-widest text-sky-500">Hạ Long City 🌊</p>
+          </div>
         </div>
-        <button onClick={toggleRecording} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-100' : 'bg-sky-500'}`}><Mic size={32} color="white" /></button>
+        <div className="flex flex-col items-center shrink-0">
+          <button onClick={toggleRecording} className={`w-[4.5rem] h-[4.5rem] md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${isRecording ? 'bg-red-500 ring-4 md:ring-8 ring-red-100 animate-pulse' : 'bg-sky-500 hover:bg-sky-600'}`}>
+            <Mic size={28} className="md:w-8 md:h-8" color="white" />
+          </button>
+          <p className="hidden md:block mt-4 font-black text-sky-700 text-[10px] tracking-widest uppercase opacity-60 text-center">{isRecording ? t.ui_listening : t.ui_tapToTalk}</p>
+        </div>
       </div>
-      <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b flex justify-between items-center">
-          <span className="font-black text-slate-400 uppercase text-xs">{t.ui_learning_title}</span>
-          <button onClick={() => setSpeechSpeed(s => s >= 1.2 ? 0.8 : s + 0.2)} className="bg-slate-100 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest"><Gauge size={14} className="inline mr-1"/> {Math.round(speechSpeed * 100)}%</button>
+      <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
+        <div className="px-4 md:px-6 py-3 border-b border-slate-50 flex items-center justify-between shrink-0 bg-white z-10">
+          <div className="flex flex-col">
+            <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
+            <div className="flex items-center space-x-1.5 mt-0.5"><Globe size={10} className="text-sky-400" /><span className="text-[9px] md:text-[10px] font-black text-sky-600 uppercase">{t.label}</span></div>
+          </div>
+          <div className="flex items-center space-x-1 md:space-x-2">
+              <button onClick={cycleSpeechSpeed} className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">
+                  <Gauge size={12} /> <span>{Math.round(speechSpeed * 100)}%</span>
+              </button>
+              <button onClick={downloadConversation} className="flex items-center gap-1 bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-slate-200 transition-colors">
+                  <Download size={12} />
+              </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-sky-50/10">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 bg-sky-50/10 custom-scrollbar scroll-smooth">
           {messages.map((msg) => {
-            const parts = (msg.text || "").split('|');
+            const parts = (msg.displayedText || "").split('|');
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white border border-slate-100 text-slate-800'}`}>
-                  <p className="font-bold text-sm md:text-base">{parts[0]}</p>
-                  {parts[1] && <p className="text-xs italic mt-2 border-t pt-2 opacity-70">{parts[1]}</p>}
-                  {msg.role === 'user' && msg.translation && <p className="text-xs italic mt-2 border-t pt-2 opacity-70">{msg.translation}</p>}
+                <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
+                  <p className="text-sm md:text-base font-bold">
+                    {msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.displayedText}
+                  </p>
+                  {(msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation) ? (
+                    <p className="text-xs italic mt-2 pt-2 border-t border-black/10">
+                      {msg.role === 'ai' ? parts[1] : msg.translation}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             );
           })}
           <div ref={chatEndRef}></div>
         </div>
-        <div className="p-4 border-t flex gap-2">
-          <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-4 py-3 bg-slate-50 rounded-xl outline-none" />
-          <button onClick={() => handleSendMessage(userInput)} className="bg-sky-600 text-white px-6 rounded-xl"><Send size={20}/></button>
+        <div className="p-3 md:p-4 border-t border-slate-50 flex gap-2 bg-white">
+          <input 
+            type="text" 
+            value={userInput} 
+            onChange={(e) => setUserInput(e.target.value)} 
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} 
+            placeholder={t.ui_placeholder}
+            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 font-medium"
+          />
+          <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-sky-600 text-white px-5 rounded-xl"><Send /></button>
         </div>
       </div>
     </div>
   );
 };
-
 export default AIfriendLan;
