@@ -3,17 +3,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { generateContentWithRetry } from '../config/apiKeys';
 
 export const Chatbot: React.FC = () => {
+    // Lấy ngôn ngữ từ localStorage hoặc mặc định là 'en'
     const [currentLang, setCurrentLang] = useState<'en' | 'ru'>(() => (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en');
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ text: string; isBot: boolean }[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
-    const [interimTranscript, setInterimTranscript] = useState('');
 
     const recognitionRef = useRef<any | null>(null);
     const chatBodyRef = useRef<HTMLDivElement>(null);
-    const finalTranscriptRef = useRef('');
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const prevMessagesLength = useRef(messages.length);
 
@@ -34,20 +33,36 @@ export const Chatbot: React.FC = () => {
         }
     };
 
+    // 1. THE CHỐT: Theo dõi sự thay đổi ngôn ngữ từ nút bấm trên Website
     useEffect(() => {
         const handleLangChange = () => {
-            setCurrentLang((localStorage.getItem('app_lang') as 'en' | 'ru') || 'en');
+            const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
+            if (newLang !== currentLang) {
+                setCurrentLang(newLang);
+            }
         };
+
+        // Lắng nghe sự kiện từ localStorage và các Custom Event nếu có
         window.addEventListener('storage', handleLangChange);
         window.addEventListener('languageChanged', handleLangChange);
+        
+        // Kiểm tra định kỳ (Interval) đề phòng trường hợp các event không trigger
+        const interval = setInterval(handleLangChange, 1000);
+
         return () => {
             window.removeEventListener('storage', handleLangChange);
             window.removeEventListener('languageChanged', handleLangChange);
+            clearInterval(interval);
         };
-    }, []);
+    }, [currentLang]);
 
+    // 2. THE CHỐT: Khi currentLang thay đổi, Reset toàn bộ tin nhắn về ngôn ngữ mới
     useEffect(() => {
         setMessages([{ text: translations[currentLang].initialMessage, isBot: true }]);
+        // Nếu chatbot đang mở thì đọc luôn câu chào mới
+        if (isOpen) {
+            speak(translations[currentLang].initialMessage);
+        }
     }, [currentLang]);
 
     useEffect(() => {
@@ -123,19 +138,22 @@ export const Chatbot: React.FC = () => {
             const docResponse = await fetch(docUrl);
             const docText = await docResponse.text();
 
+            const targetLang = currentLang === 'ru' ? 'Russian' : 'English';
+
             const payload = {
                 model: "gemini-3-flash-preview",
                 config: {
                     systemInstruction: `You are Trang, the official AI assistant for 'Truly Easy Vietnamese'.
                     CONTEXT: This platform teaches Vietnamese to English and Russian speakers.
                     KNOWLEDGE BASE: ${docText}
-                    RULES:
+                    STRICT RULES:
                     1. Use ONLY the provided knowledge to answer.
-                    2. If the info isn't there, politely say you only know about the courses.
-                    3. Keep it friendly, helpful, and concise (max 3 sentences).
-                    4. Language: Answer in ${currentLang === 'ru' ? 'Russian' : 'English'}.`
+                    2. LANGUAGE: You MUST answer strictly in ${targetLang}. 
+                    3. If the user asks in another language, you must still reply in ${targetLang}.
+                    4. Keep it friendly, helpful, and concise (max 3 sentences).`
                 },
                 contents: [
+                    // Chỉ gửi tối đa 4 tin nhắn gần nhất để giữ ngữ cảnh đúng ngôn ngữ hiện tại
                     ...messages.slice(-4).map(m => ({
                         role: m.isBot ? 'model' : 'user',
                         parts: [{ text: m.text }]
@@ -145,7 +163,7 @@ export const Chatbot: React.FC = () => {
             };
 
             const response = await generateContentWithRetry(payload);
-            const aiText = response.text || (currentLang === 'ru' ? "Извините, я không thể trả lời." : "Sorry, I can't answer that.");
+            const aiText = response.text || (currentLang === 'ru' ? "Извините, я не могу ответить." : "Sorry, I can't answer that.");
 
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
         } catch (error) {
