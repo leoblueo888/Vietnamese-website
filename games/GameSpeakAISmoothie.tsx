@@ -56,7 +56,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        handleSendMessage(text);
+        handleSendMessage(text, true); // Gọi hàm với flag fromMic
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
@@ -64,21 +64,41 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   }, []);
 
   // --- AI ENGINE ---
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
 
+    let processedInput = text.trim();
+
+    // SỬA CHỖ 1: Xử lý văn bản từ giọng nói qua /api/chat
+    if (fromMic) {
+      try {
+        const voiceReformResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `Sửa lỗi chính tả và thêm dấu câu cho câu sau để nó tự nhiên hơn, chỉ trả về kết quả tiếng Việt sạch: "${processedInput}"`,
+            systemPrompt: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả đã sửa, không giải thích, không nói thêm gì khác."
+          })
+        });
+        const voiceData = await voiceReformResponse.json();
+        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
+      } catch (e) { console.error("Lỗi sửa voice:", e); }
+    }
+
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text, id: userMsgId }]);
+    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
     setUserInput("");
 
+    // SỬA CHỖ 2: Nhập vai nhân vật Xuân qua /api/chat
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
+          message: processedInput,
+          history: messages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })),
           systemPrompt: `
             BỐI CẢNH: Bạn tên là Xuân (22 tuổi), nhân viên tiệm sinh tố sức khỏe.
             NHIỆM VỤ: Tư vấn các loại nước ép, sinh tố tốt cho sức khỏe.
@@ -86,18 +106,20 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
             1. CHỈ nói tiếng Việt. Tuyệt đối KHÔNG dịch, KHÔNG giải thích tiếng Anh/Nga.
             2. Xưng hô "Em" - "Anh". Dùng từ ngữ tự nhiên, lễ phép (Dạ, ạ).
             3. Trả lời ngắn gọn, tập trung vào việc bán hàng và tư vấn món uống.
+            4. Không sử dụng ký tự đặc biệt như dấu sao (*).
           `
         })
       });
 
       const data = await response.json();
       if (data.text) {
-        const cleanText = data.text.split('|')[0].trim();
+        // Loại bỏ phần dịch nếu AI lỡ tay viết dấu gạch đứng
+        const cleanText = data.text.split('|')[0].trim().replace(/[*]/g, '');
         const aiMsgId = `ai-${Date.now()}`;
         setMessages(prev => [...prev, { role: 'ai', text: cleanText, id: aiMsgId }]);
         speakWord(cleanText, aiMsgId);
       }
-    } catch (e) { console.error(e); } finally {
+    } catch (e) { console.error("Lỗi AI phản hồi:", e); } finally {
       setIsThinking(false);
       isProcessingRef.current = false;
     }
