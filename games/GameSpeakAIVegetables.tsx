@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Minimize } from 'lucide-react';
 import type { AIFriend } from '../types';
 
-// --- DICTIONARY: TỪ VỰNG CỬA HÀNG RAU CỦ (GIỮ NGUYÊN) ---
+// --- DICTIONARY: TỪ VỰNG CỬA HÀNG RAU CỦ ---
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "rau muống": { EN: "water spinach", type: "Noun" },
   "cà chua": { EN: "tomato", type: "Noun" },
@@ -87,8 +87,7 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        setUserInput(text);
-        handleSendMessage(text);
+        handleSendMessage(text, true); // Gọi kèm flag fromMic
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
@@ -107,29 +106,54 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
     audioRef.current.onended = () => setActiveVoiceId(null);
   };
 
-  // --- AI BRIDGE ---
-  const handleSendMessage = async (text: string) => {
+  // --- AI BRIDGE (2 MODELS LOGIC) ---
+  const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
 
+    let processedInput = text.trim();
+
+    // CHỖ DÙNG MODEL 1: Lọc lỗi chính tả giọng nói
+    if (fromMic) {
+      try {
+        const voiceResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `Sửa lỗi chính tả câu sau để nghe tự nhiên hơn: "${processedInput}"`,
+            systemPrompt: "Bạn là trợ lý sửa văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không thêm ký tự lạ."
+          })
+        });
+        const voiceData = await voiceResponse.json();
+        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
+      } catch (e) { console.error("Lỗi Voice model:", e); }
+    }
+
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text, id: userMsgId }]);
+    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
     setUserInput("");
 
+    // CHỖ DÙNG MODEL 2: Nhập vai Phương bán rau + History
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
-          lang: selectedLang.toLowerCase(),
+          message: processedInput,
+          history: messages.map(m => ({
+            role: m.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          })),
           systemPrompt: `
-            You are Phương, a 20-year-old friendly vegetable seller. Use "Dạ", "ạ", "Anh" and "Em".
-            FORMAT: Vietnamese | ${t.systemPromptLang} Translation.
-            RULE 1: Respond ONLY in Vietnamese first, then the translation after "|".
-            RULE 2: Flow: 1st response must end with "anh muốn rau củ gì ạ?". 2nd response (when they pick) must ask "anh mua mấy ký ạ?".
-            RULE 3: Prices should be like "20 nghìn". Keep it short.
+            BỐI CẢNH: Bạn là Phương (20 tuổi), người bán rau củ vui vẻ, nhiệt tình tại chợ.
+            NHIỆM VỤ: Tư vấn rau tươi hôm nay, cân rau và báo giá.
+            ĐỊNH DẠNG: Tiếng Việt | Dịch sang ${t.systemPromptLang}.
+            QUY TẮC:
+            1. Luôn dùng "Dạ", "ạ", xưng "Em" gọi khách là "Anh".
+            2. Câu trả lời đầu tiên phải hỏi khách muốn mua gì. Khi khách chọn loại rau, hãy hỏi mua mấy cân.
+            3. Giá cả dùng "nghìn" (VD: 15 nghìn). 
+            4. Trả lời ngắn gọn, không dùng ký tự *.
           `
         })
       });
@@ -137,8 +161,9 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
       const data = await response.json();
       if (data.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
-        speakWord(data.text, aiMsgId);
+        const cleanAIData = data.text.replace(/[*]/g, '');
+        setMessages(prev => [...prev, { role: 'ai', text: cleanAIData, id: aiMsgId }]);
+        speakWord(cleanAIData, aiMsgId);
       }
     } catch (e) {
       console.error("API Error:", e);
@@ -159,7 +184,7 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
       const entry = DICTIONARY[cleanWord];
       if (entry) {
         return (
-          <span key={idx} className="group relative border-b border-dotted border-violet-300 cursor-help text-violet-700">
+          <span key={idx} className="group relative border-b border-dotted border-violet-300 cursor-help text-violet-700 font-bold">
             {word}
             <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg shadow-xl z-50 w-max">
               {entry.EN}
@@ -196,8 +221,7 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
 
   return (
     <div ref={gameContainerRef} className="w-full h-full bg-[#0B0F19] flex flex-col md:flex-row overflow-hidden md:p-4">
-      {/* Sidebar */}
-      <div className="h-[25vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 shrink-0">
+      <div className="h-[25vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 shrink-0 shadow-2xl z-20">
         <div className="flex flex-row md:flex-col items-center gap-4">
           <div className="w-24 h-24 md:w-56 md:h-56 rounded-3xl overflow-hidden border-4 border-white shadow-2xl">
             <img src={character.avatarUrl} className="w-full h-full object-cover" />
@@ -213,8 +237,7 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
         </button>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 bg-white flex flex-col overflow-hidden relative">
+      <div className="flex-1 bg-white flex flex-col overflow-hidden relative shadow-inner">
         <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm z-10">
            <span className="font-black text-violet-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
            <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1 uppercase">
@@ -233,8 +256,8 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm relative transition-all ${isActive ? 'ring-4 ring-violet-100' : ''} ${msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-violet-50'}`}>
                   <div className="flex flex-col">
-                    <div className="text-sm md:text-lg font-bold leading-tight">
-                      {msg.role === 'ai' ? renderInteractiveText(viText) : viText}
+                    <div className="text-sm md:text-lg font-bold leading-tight flex items-start">
+                      <span className="flex-1">{msg.role === 'ai' ? renderInteractiveText(viText) : viText}</span>
                       <button onClick={() => speakWord(msg.text, msg.id)} className={`ml-3 p-1 rounded-full transition-colors ${msg.role === 'user' ? 'hover:bg-violet-500 text-violet-200' : 'hover:bg-violet-50 text-violet-600'}`}>
                         <Volume2 size={18}/>
                       </button>
@@ -249,19 +272,18 @@ export const GameSpeakAIVegetables: React.FC<{ character: AIFriend }> = ({ chara
               </div>
             );
           })}
-          {isThinking && <div className="text-[10px] font-black text-violet-400 animate-pulse uppercase tracking-widest italic">Phương đang cân rau...</div>}
+          {isThinking && <div className="text-[10px] font-black text-violet-400 animate-pulse uppercase tracking-widest italic ml-4">Phương đang cân rau...</div>}
           <div ref={chatEndRef} />
         </div>
 
-        {/* Input */}
         <div className="p-4 md:p-6 bg-white border-t border-slate-50 flex gap-3 pb-10 md:pb-6">
           <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)}
-            placeholder={t.ui_placeholder} className="flex-1 bg-slate-50 px-5 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-violet-100 focus:bg-white transition-all" />
-          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-2xl shadow-lg hover:bg-emerald-600 transition-all"><Send size={20}/></button>
+            placeholder={t.ui_placeholder} className="flex-1 bg-slate-50 px-5 py-4 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-violet-100 focus:bg-white transition-all shadow-inner" />
+          <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-6 rounded-2xl shadow-lg hover:bg-emerald-600 transition-all active:scale-95"><Send size={20}/></button>
         </div>
       </div>
 
-      <button onClick={toggleFullscreen} className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full text-white backdrop-blur-md opacity-30 hover:opacity-100 transition-all">
+      <button onClick={toggleFullscreen} className="absolute bottom-4 right-4 p-2 bg-white/20 rounded-full text-white backdrop-blur-md opacity-30 hover:opacity-100 transition-all z-50">
         {isFullscreen ? <Minimize size={16}/> : <Maximize size={16}/>}
       </button>
     </div>
