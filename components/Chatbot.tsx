@@ -55,13 +55,10 @@ export const Chatbot: React.FC = () => {
     }, []);
 
     const stopAudio = useCallback(() => {
-        // Dừng Web Speech API
         if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
-        // Dừng Audio Element cũ
         if (audioRef.current) {
-            (audioRef.current as any).queueId = null;
             audioRef.current.pause();
             audioRef.current.src = '';
         }
@@ -72,49 +69,34 @@ export const Chatbot: React.FC = () => {
         if (!text) return;
 
         const cleanedText = text.replace(/[*_`#|]/g, '').trim();
-        
-        // Cấu hình Web Speech API
         const utterance = new SpeechSynthesisUtterance(cleanedText);
         utterance.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
         utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-
-        // Logic chọn giọng đọc chất lượng cao
+        
         const voices = window.speechSynthesis.getVoices();
         const preferredVoice = voices.find(v => 
             v.lang.includes(currentLang === 'ru' ? 'ru' : 'en') && 
             (v.name.includes('Female') || v.name.includes('Google') || v.name.includes('Samantha'))
         );
 
-        if (preferredVoice) {
-            utterance.voice = preferredVoice;
-        }
-
+        if (preferredVoice) utterance.voice = preferredVoice;
         window.speechSynthesis.speak(utterance);
     }, [stopAudio, currentLang]);
 
     useEffect(() => {
         if (messages.length > prevMessagesLength.current) {
             const lastMessage = messages[messages.length - 1];
-            if (lastMessage.isBot) {
+            if (lastMessage.isBot && isOpen) {
                 speak(lastMessage.text);
             }
         }
         prevMessagesLength.current = messages.length;
-    }, [messages, speak]);
+    }, [messages, speak, isOpen]);
 
     const toggleChat = () => {
         if (!isOpen) {
-            // Mồi âm thanh để lấy quyền autoplay
-            if (audioRef.current) {
-                audioRef.current.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-                audioRef.current.play().catch(() => {});
-            }
             setIsOpen(true);
-            // Delay nhẹ để UI mở xong mới nói
-            setTimeout(() => {
-                speak(translations[currentLang].initialMessage);
-            }, 300);
+            setTimeout(() => speak(translations[currentLang].initialMessage), 500);
         } else {
             stopAudio();
             setIsOpen(false);
@@ -125,7 +107,7 @@ export const Chatbot: React.FC = () => {
         if (chatBodyRef.current) {
             chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
         }
-    }, [messages, isLoadingAI, interimTranscript]);
+    }, [messages, isLoadingAI]);
 
     const handleSendMessage = useCallback(async (messageText: string) => {
         const trimmedMessage = messageText.trim();
@@ -137,57 +119,58 @@ export const Chatbot: React.FC = () => {
         setIsLoadingAI(true);
 
         try {
-            // Lấy dữ liệu từ Google Docs (Kiến thức của Trang)
             const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
             const docResponse = await fetch(docUrl);
             const docText = await docResponse.text();
 
-            const systemInstruction = `You are Trang, a friendly AI for 'Truly Easy Vietnamese'. 
-            Use ONLY this text to answer: ${docText}. 
-            Keep it short (2-5 sentences). Language: ${currentLang === 'ru' ? 'Russian' : 'English'}.`;
+            const payload = {
+                model: "gemini-3-flash-preview",
+                config: {
+                    systemInstruction: `You are Trang, the official AI assistant for 'Truly Easy Vietnamese'.
+                    CONTEXT: This platform teaches Vietnamese to English and Russian speakers.
+                    KNOWLEDGE BASE: ${docText}
+                    RULES:
+                    1. Use ONLY the provided knowledge to answer.
+                    2. If the info isn't there, politely say you only know about the courses.
+                    3. Keep it friendly, helpful, and concise (max 3 sentences).
+                    4. Language: Answer in ${currentLang === 'ru' ? 'Russian' : 'English'}.`
+                },
+                contents: [
+                    ...messages.slice(-4).map(m => ({
+                        role: m.isBot ? 'model' : 'user',
+                        parts: [{ text: m.text }]
+                    })),
+                    { role: 'user', parts: [{ text: trimmedMessage }] }
+                ]
+            };
 
-            const fullPrompt = `${systemInstruction}\n\nUser: ${trimmedMessage}`;
-            const aiText = await generateContentWithRetry(fullPrompt);
+            const response = await generateContentWithRetry(payload);
+            const aiText = response.text || (currentLang === 'ru' ? "Извините, я không thể trả lời." : "Sorry, I can't answer that.");
 
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
         } catch (error) {
-            const errorMsg = currentLang === 'ru' 
-                ? "Извините, возникла проблема. Попробуйте еще раз!" 
-                : "Sorry, I'm having trouble. Please try again!";
+            console.error("Chatbot AI Error:", error);
+            const errorMsg = currentLang === 'ru' ? "Ошибка связи. Попробуйте снова." : "Connection error. Please try again.";
             setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
         } finally {
             setIsLoadingAI(false);
         }
-    }, [isLoadingAI, stopAudio, currentLang]);
+    }, [isLoadingAI, stopAudio, currentLang, messages]);
 
     useEffect(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
+            recognition.continuous = false;
+            recognition.interimResults = false;
             recognition.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
             
             recognition.onresult = (event: any) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscriptRef.current += event.results[i][0].transcript;
-                    } else {
-                        interim += event.results[i][0].transcript;
-                    }
-                }
-                setInterimTranscript(interim);
+                const transcript = event.results[0][0].transcript;
+                if (transcript) handleSendMessage(transcript);
             };
 
-            recognition.onend = () => {
-                setIsRecording(false);
-                const finalResult = finalTranscriptRef.current.trim();
-                if (finalResult) {
-                    handleSendMessage(finalResult);
-                }
-                finalTranscriptRef.current = '';
-            };
+            recognition.onend = () => setIsRecording(false);
             recognitionRef.current = recognition;
         }
     }, [currentLang, handleSendMessage]);
@@ -198,7 +181,6 @@ export const Chatbot: React.FC = () => {
             recognitionRef.current.stop();
         } else {
             stopAudio();
-            finalTranscriptRef.current = '';
             setIsRecording(true);
             recognitionRef.current.start();
         }
@@ -207,26 +189,11 @@ export const Chatbot: React.FC = () => {
     return (
         <>
             <style>{`
-                @keyframes float {
-                    0% { transform: translateY(0px); }
-                    50% { transform: translateY(-6px); }
-                    100% { transform: translateY(0px); }
-                }
-                .animate-float {
-                    animation: float 4s ease-in-out infinite;
-                }
-                .dot-flashing {
-                    position: relative;
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 5px;
-                    background-color: #1e5aa0;
-                    animation: dotFlashing 1s infinite alternate;
-                }
-                @keyframes dotFlashing {
-                    0% { opacity: 0.3; }
-                    100% { opacity: 1; }
-                }
+                @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0px); } }
+                .animate-float { animation: float 4s ease-in-out infinite; }
+                .dot-flashing { position: relative; width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
+                @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+                .no-scrollbar::-webkit-scrollbar { display: none; }
             `}</style>
 
             <button 
@@ -237,51 +204,28 @@ export const Chatbot: React.FC = () => {
                     {translations[currentLang].assistantLabel}
                 </span>
                 <div className="w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center border-2 border-blue-400 overflow-hidden">
-                    <img 
-                        src="https://img.icons8.com/fluency/96/bot.png" 
-                        alt="Trang" 
-                        className="w-10 h-10" 
-                    />
+                    <img src="https://img.icons8.com/fluency/96/bot.png" alt="Trang" className="w-10 h-10" />
                 </div>
             </button>
 
             <div 
-                className={`fixed bottom-24 right-6 w-[350px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${
+                className={`fixed bottom-24 right-6 w-[350px] h-[550px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${
                     isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'
                 }`}
             >
                 <div className="p-4 bg-slate-50 rounded-t-2xl border-b flex flex-col items-center relative">
-                    <img 
-                        src="https://img.icons8.com/fluency/96/bot.png" 
-                        className="w-16 h-16 mb-2" 
-                        alt="Trang" 
-                    />
-                    <h3 className="font-bold text-slate-800">Trang</h3>
+                    <img src="https://img.icons8.com/fluency/96/bot.png" className="w-16 h-16 mb-2" alt="Trang" />
+                    <h3 className="font-bold text-slate-800">Trang Assistant</h3>
                     <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">● Online</p>
-                    <button 
-                        onClick={toggleChat} 
-                        className="absolute top-2 right-4 text-2xl text-slate-300 hover:text-slate-500"
-                    >
-                        ×
-                    </button>
+                    <button onClick={toggleChat} className="absolute top-2 right-4 text-2xl text-slate-300 hover:text-slate-500">×</button>
                 </div>
 
-                <div 
-                    ref={chatBodyRef} 
-                    className="flex-1 p-4 overflow-y-auto space-y-4 bg-white scroll-smooth"
-                >
+                <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white scroll-smooth">
                     {messages.map((msg, index) => (
-                        <div 
-                            key={index} 
-                            className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}
-                        >
-                            <div 
-                                className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${
-                                    !msg.isBot 
-                                        ? 'bg-[#1e5aa0] text-white rounded-br-none' 
-                                        : 'bg-slate-100 text-slate-700 rounded-bl-none'
-                                }`}
-                            >
+                        <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${
+                                !msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'
+                            }`}>
                                 {msg.text}
                             </div>
                         </div>
@@ -293,7 +237,7 @@ export const Chatbot: React.FC = () => {
                     )}
                 </div>
 
-                <div className="p-4 border-t">
+                <div className="p-4 border-t bg-white rounded-b-2xl">
                     <div className="flex gap-2 mb-3 overflow-x-auto pb-2 no-scrollbar">
                         {translations[currentLang].quickReplies.map(text => (
                             <button 
