@@ -4,7 +4,10 @@ import { Play, Mic, Square, RotateCcw, Volume2, Layers, BookOpen, Globe, Volume1
 // --- Assets & Constants ---
 const INITIAL_CONSONANTS = ["", "b", "c", "ch", "d", "đ", "g", "gh", "gi", "h", "k", "kh", "l", "m", "n", "ng", "ngh", "nh", "p", "ph", "qu", "r", "s", "t", "th", "tr", "v", "x"];
 
-const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
+/**
+ * Core Model: Gemini 2.5 Flash
+ */
+const MODEL_NAME = "gemini-2.5-flash";
 
 const TRANSLATIONS = {
   en: {
@@ -19,13 +22,12 @@ const TRANSLATIONS = {
     tabCV: "Consonant + Diphthong",
     tabVC: "Diphthong + Consonant",
     tabCVC: "Con1 + Diphthong + Con2",
-    // Mobile abbreviations
     mobV: "Dip",
     mobCV: "Con + Dip",
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Prefix_Consonant",
-    footer: "Adaptive Engine // Gemini-Flash",
+    footer: "Adaptive Engine // Gemini 2.5 Flash",
     contextTitle: "Context",
     backBtn: "Exit"
   },
@@ -41,13 +43,12 @@ const TRANSLATIONS = {
     tabCV: "Согласный + Дифтонг",
     tabVC: "Дифтоng + Согласный",
     tabCVC: "Сог1 + Дифтонг + Сог2",
-    // Mobile abbreviations
     mobV: "Dip",
     mobCV: "Con + Dip",
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Префикс_Согласная",
-    footer: "Движок: Gemini-Flash",
+    footer: "Движок: Gemini 2.5 Flash",
     contextTitle: "Контекст",
     backBtn: "Выход"
   }
@@ -131,7 +132,7 @@ const DIPHTHONG_BASES = {
   VC: ['iêm', 'iên', 'iêng', 'iêp', 'iêt', 'iêu', 'iêc', 'uôm', 'uôn', 'uông', 'uôc', 'uôt', 'ươm', 'ươn', 'ương', 'ươc', 'ươp', 'ươt', 'ươu', 'oan', 'oang', 'oac', 'oat', 'uyên', 'uyêt']
 };
 
-export default function Pronunciationtrainer2() {
+export default function GamePronunciationTrainer2() {
   const [gameStarted, setGameStarted] = useState(false);
   const [lang, setLang] = useState('en');
   const [activeTab, setActiveTab] = useState('V');
@@ -152,7 +153,7 @@ export default function Pronunciationtrainer2() {
 
   const callGemini = async (payload: any, retries = 5, delay = 1000) => {
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${process.env.API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${process.env.NEXT_PUBLIC_API_KEY || ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -303,7 +304,7 @@ export default function Pronunciationtrainer2() {
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden lg:p-4 lg:gap-4 z-10">
         
-        {/* SOUND LIBRARY PANEL - CHIẾM 75% TRÊN MOBILE */}
+        {/* SOUND LIBRARY PANEL */}
         <section className="h-[75vh] lg:h-auto lg:flex-1 bg-white/[0.02] border-b lg:border border-white/10 lg:rounded-[2rem] flex flex-col overflow-hidden shadow-2xl backdrop-blur-sm z-10">
           <div className="p-3 border-b border-white/10 bg-white/[0.03]">
             <div className="flex lg:hidden overflow-x-auto gap-2 mb-3 pb-1 no-scrollbar">
@@ -354,15 +355,13 @@ export default function Pronunciationtrainer2() {
           </div>
         </section>
 
-        {/* FOCUS PANEL - CHIẾM 25% TRÊN MOBILE */}
+        {/* FOCUS PANEL */}
         <section className="h-[25vh] lg:h-auto lg:w-[450px] flex shrink-0 bg-[#0a0a0f] lg:bg-transparent p-2 lg:p-0 z-20">
           
           <div className="w-full bg-white/[0.03] border border-white/10 lg:rounded-[2.5rem] rounded-2xl p-3 lg:p-12 flex flex-col relative overflow-hidden backdrop-blur-xl shadow-xl z-20">
-            {/* Background Accent - Added pointer-events-none and lowered z-index */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 blur-[60px] rounded-full -mr-16 -mt-16 pointer-events-none z-0" />
             
             <div className="flex-1 flex flex-col justify-center z-10">
-              {/* TOP SECTION: WORD & AUDIO */}
               <div className="flex items-center lg:items-start justify-between w-full mb-1 lg:mb-12 relative z-30">
                 <div className="flex flex-col flex-1 overflow-hidden mr-4">
                   <div className="text-xl lg:text-[3.5rem] font-black text-white uppercase italic drop-shadow-sm truncate leading-tight lg:mb-2">
@@ -382,7 +381,6 @@ export default function Pronunciationtrainer2() {
                 </button>
               </div>
 
-              {/* CONTEXT SECTION: MERGED ON MOBILE */}
               <div className="mt-2 pt-2 border-t border-white/5 flex flex-col lg:gap-4 animate-in fade-in duration-700 relative z-20">
                 {!isLoadingDetails && wordDetails.combo ? (
                   <>
@@ -422,13 +420,13 @@ export default function Pronunciationtrainer2() {
             </div>
             
             <div className="hidden lg:flex mt-8 text-[8px] lg:text-[10px] font-mono text-white/20 uppercase tracking-[0.2em] items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-500/40" /> Phonetic Context Engine Active
+              <span className="w-2 h-2 rounded-full bg-cyan-500/40" /> Engine: {MODEL_NAME}
             </div>
           </div>
         </section>
       </main>
 
-      {/* Footer Exit & Branding */}
+      {/* Footer */}
       <footer className="h-12 flex items-center justify-between px-4 lg:px-8 border-t border-white/5 bg-[#050508] z-40 shrink-0">
         <button 
           onClick={() => setGameStarted(false)}
@@ -442,8 +440,6 @@ export default function Pronunciationtrainer2() {
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(34, 211, 238, 0.1); border-radius: 10px; }
-        .custom-scrollbar-thin::-webkit-scrollbar { width: 2px; }
-        .custom-scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(34, 211, 238, 0.2); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         body { background-color: #050508; overflow: hidden; -webkit-tap-highlight-color: transparent; }
