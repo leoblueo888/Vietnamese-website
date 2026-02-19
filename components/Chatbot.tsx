@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// Sửa import để dùng chung hệ thống 10 Key của ông
+// Sử dụng hệ thống xoay vòng Key để tối ưu tầng Free
 import { generateContentWithRetry } from '../config/apiKeys';
 
 export const Chatbot: React.FC = () => {
@@ -55,6 +55,11 @@ export const Chatbot: React.FC = () => {
     }, []);
 
     const stopAudio = useCallback(() => {
+        // Dừng Web Speech API
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        // Dừng Audio Element cũ
         if (audioRef.current) {
             (audioRef.current as any).queueId = null;
             audioRef.current.pause();
@@ -64,76 +69,75 @@ export const Chatbot: React.FC = () => {
 
     const speak = useCallback((text: string) => {
         stopAudio();
-        if (audioRef.current) {
-            const thisQueueId = Date.now();
-            (audioRef.current as any).queueId = thisQueueId;
-            const cleanedText = text.replace(/[*_`#]/g, '').trim();
-            if (!cleanedText) return;
+        if (!text) return;
 
-            const chunks: string[] = [];
-            const maxLength = 180;
-            let tempText = cleanedText;
-            while (tempText.length > 0) {
-                if (tempText.length <= maxLength) {
-                    chunks.push(tempText);
-                    break;
-                }
-                let splitPos = tempText.substring(0, maxLength).lastIndexOf('.');
-                if (splitPos === -1) splitPos = tempText.substring(0, maxLength).lastIndexOf(' ');
-                if (splitPos === -1) splitPos = maxLength;
-                chunks.push(tempText.substring(0, splitPos + 1));
-                tempText = tempText.substring(splitPos + 1).trim();
-            }
+        const cleanedText = text.replace(/[*_`#|]/g, '').trim();
+        
+        // Cấu hình Web Speech API
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
+        utterance.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
 
-            let currentChunkIndex = 0;
-            const playNextChunk = () => {
-                if ((audioRef.current as any)?.queueId !== thisQueueId || currentChunkIndex >= chunks.length) return;
-                const chunk = chunks[currentChunkIndex];
-                if (chunk && audioRef.current) {
-                    const ttsLang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
-                    audioRef.current.src = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${ttsLang}&client=tw-ob`;
-                    audioRef.current.onended = () => {
-                        currentChunkIndex++;
-                        playNextChunk();
-                    };
-                    audioRef.current.play().catch(() => {
-                        currentChunkIndex++;
-                        playNextChunk();
-                    });
-                }
-            };
-            playNextChunk();
+        // Logic chọn giọng đọc chất lượng cao
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(v => 
+            v.lang.includes(currentLang === 'ru' ? 'ru' : 'en') && 
+            (v.name.includes('Female') || v.name.includes('Google') || v.name.includes('Samantha'))
+        );
+
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
         }
+
+        window.speechSynthesis.speak(utterance);
     }, [stopAudio, currentLang]);
 
     useEffect(() => {
         if (messages.length > prevMessagesLength.current) {
             const lastMessage = messages[messages.length - 1];
-            if (lastMessage.isBot) speak(lastMessage.text);
+            if (lastMessage.isBot) {
+                speak(lastMessage.text);
+            }
         }
         prevMessagesLength.current = messages.length;
     }, [messages, speak]);
 
     const toggleChat = () => {
-        if (!isOpen) speak(translations[currentLang].initialMessage);
-        else stopAudio();
-        setIsOpen(!isOpen);
+        if (!isOpen) {
+            // Mồi âm thanh để lấy quyền autoplay
+            if (audioRef.current) {
+                audioRef.current.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+                audioRef.current.play().catch(() => {});
+            }
+            setIsOpen(true);
+            // Delay nhẹ để UI mở xong mới nói
+            setTimeout(() => {
+                speak(translations[currentLang].initialMessage);
+            }, 300);
+        } else {
+            stopAudio();
+            setIsOpen(false);
+        }
     };
 
     useEffect(() => {
-        if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
+        if (chatBodyRef.current) {
+            chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
+        }
     }, [messages, isLoadingAI, interimTranscript]);
 
     const handleSendMessage = useCallback(async (messageText: string) => {
         const trimmedMessage = messageText.trim();
         if (!trimmedMessage || isLoadingAI) return;
+        
         stopAudio();
         setMessages(prev => [...prev, { text: trimmedMessage, isBot: false }]);
         setInputValue('');
         setIsLoadingAI(true);
 
         try {
-            // Fetch kiến thức từ Google Docs
+            // Lấy dữ liệu từ Google Docs (Kiến thức của Trang)
             const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
             const docResponse = await fetch(docUrl);
             const docText = await docResponse.text();
@@ -142,7 +146,6 @@ export const Chatbot: React.FC = () => {
             Use ONLY this text to answer: ${docText}. 
             Keep it short (2-5 sentences). Language: ${currentLang === 'ru' ? 'Russian' : 'English'}.`;
 
-            // GỌI HÀM XOAY VÒNG KEY TỪ APIKEYS.TS
             const fullPrompt = `${systemInstruction}\n\nUser: ${trimmedMessage}`;
             const aiText = await generateContentWithRetry(fullPrompt);
 
@@ -164,18 +167,25 @@ export const Chatbot: React.FC = () => {
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
+            
             recognition.onresult = (event: any) => {
                 let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) finalTranscriptRef.current += event.results[i][0].transcript;
-                    else interim += event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscriptRef.current += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
                 }
                 setInterimTranscript(interim);
             };
+
             recognition.onend = () => {
                 setIsRecording(false);
                 const finalResult = finalTranscriptRef.current.trim();
-                if (finalResult) handleSendMessage(finalResult);
+                if (finalResult) {
+                    handleSendMessage(finalResult);
+                }
                 finalTranscriptRef.current = '';
             };
             recognitionRef.current = recognition;
@@ -184,8 +194,9 @@ export const Chatbot: React.FC = () => {
 
     const toggleRecording = () => {
         if (!recognitionRef.current) return;
-        if (isRecording) recognitionRef.current.stop();
-        else {
+        if (isRecording) {
+            recognitionRef.current.stop();
+        } else {
             stopAudio();
             finalTranscriptRef.current = '';
             setIsRecording(true);
@@ -196,44 +207,100 @@ export const Chatbot: React.FC = () => {
     return (
         <>
             <style>{`
-                @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0px); } }
-                .animate-float { animation: float 4s ease-in-out infinite; }
-                .dot-flashing { position: relative; width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
-                @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+                @keyframes float {
+                    0% { transform: translateY(0px); }
+                    50% { transform: translateY(-6px); }
+                    100% { transform: translateY(0px); }
+                }
+                .animate-float {
+                    animation: float 4s ease-in-out infinite;
+                }
+                .dot-flashing {
+                    position: relative;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 5px;
+                    background-color: #1e5aa0;
+                    animation: dotFlashing 1s infinite alternate;
+                }
+                @keyframes dotFlashing {
+                    0% { opacity: 0.3; }
+                    100% { opacity: 1; }
+                }
             `}</style>
 
-            <button onClick={toggleChat} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 group animate-float">
+            <button 
+                onClick={toggleChat} 
+                className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 group animate-float"
+            >
                 <span className="hidden md:inline-block bg-white/90 backdrop-blur-md font-bold text-[#1e5aa0] px-5 py-2 rounded-full shadow-lg border border-blue-100">
                     {translations[currentLang].assistantLabel}
                 </span>
                 <div className="w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center border-2 border-blue-400 overflow-hidden">
-                    <img src="https://img.icons8.com/fluency/96/bot.png" alt="Trang" className="w-10 h-10" />
+                    <img 
+                        src="https://img.icons8.com/fluency/96/bot.png" 
+                        alt="Trang" 
+                        className="w-10 h-10" 
+                    />
                 </div>
             </button>
 
-            <div className={`fixed bottom-24 right-6 w-[350px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
+            <div 
+                className={`fixed bottom-24 right-6 w-[350px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${
+                    isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'
+                }`}
+            >
                 <div className="p-4 bg-slate-50 rounded-t-2xl border-b flex flex-col items-center relative">
-                    <img src="https://img.icons8.com/fluency/96/bot.png" className="w-16 h-16 mb-2" alt="Trang" />
+                    <img 
+                        src="https://img.icons8.com/fluency/96/bot.png" 
+                        className="w-16 h-16 mb-2" 
+                        alt="Trang" 
+                    />
                     <h3 className="font-bold text-slate-800">Trang</h3>
                     <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">● Online</p>
-                    <button onClick={toggleChat} className="absolute top-2 right-4 text-2xl text-slate-300">×</button>
+                    <button 
+                        onClick={toggleChat} 
+                        className="absolute top-2 right-4 text-2xl text-slate-300 hover:text-slate-500"
+                    >
+                        ×
+                    </button>
                 </div>
 
-                <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white">
+                <div 
+                    ref={chatBodyRef} 
+                    className="flex-1 p-4 overflow-y-auto space-y-4 bg-white scroll-smooth"
+                >
                     {messages.map((msg, index) => (
-                        <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
+                        <div 
+                            key={index} 
+                            className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}
+                        >
+                            <div 
+                                className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${
+                                    !msg.isBot 
+                                        ? 'bg-[#1e5aa0] text-white rounded-br-none' 
+                                        : 'bg-slate-100 text-slate-700 rounded-bl-none'
+                                }`}
+                            >
                                 {msg.text}
                             </div>
                         </div>
                     ))}
-                    {isLoadingAI && <div className="dot-flashing ml-4"></div>}
+                    {isLoadingAI && (
+                        <div className="flex justify-start ml-4">
+                            <div className="dot-flashing"></div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="p-4 border-t">
-                    <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
+                    <div className="flex gap-2 mb-3 overflow-x-auto pb-2 no-scrollbar">
                         {translations[currentLang].quickReplies.map(text => (
-                            <button key={text} onClick={() => handleSendMessage(text)} className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100">
+                            <button 
+                                key={text} 
+                                onClick={() => handleSendMessage(text)} 
+                                className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100 transition-colors"
+                            >
                                 {text}
                             </button>
                         ))}
@@ -244,9 +311,14 @@ export const Chatbot: React.FC = () => {
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
                             className="flex-1 p-2 bg-slate-50 border rounded-xl outline-none text-sm focus:border-blue-400"
-                            placeholder={isRecording ? "Listening..." : translations[currentLang].placeholder}
+                            placeholder={isRecording ? translations[currentLang].listening : translations[currentLang].placeholder}
                         />
-                        <button onClick={toggleRecording} className={`w-10 h-10 rounded-xl flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#1e5aa0]'}`}>
+                        <button 
+                            onClick={toggleRecording} 
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all ${
+                                isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#1e5aa0]'
+                            }`}
+                        >
                             🎤
                         </button>
                     </div>
