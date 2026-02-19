@@ -35,7 +35,7 @@ export const generateContentWithRetry = async (payload: any, retryCount = 0): Pr
     // PHÂN TÍCH PAYLOAD ĐỂ GIỮ "NÃO" CHO CHATBOT
     // Nếu payload là object (từ Chatbot/Lan), ta lấy model và hướng dẫn hệ thống
     // Nếu payload chỉ là string, ta dùng mặc định
-    const modelName = payload.model || "gemini-1.5-flash";
+    const modelName = payload.model || "gemini-3-flash preview";
     const systemPrompt = payload.config?.systemInstruction || "";
     
     const model = genAI.getGenerativeModel({ 
