@@ -1,66 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Globe } from 'lucide-react';
-import type { AIFriend } from '../types';
-// Sử dụng hệ thống xoay vòng Key để tối ưu tầng Free
+// ĐỒNG BỘ: Sử dụng hệ thống xoay vòng Key từ config
 import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- DICTIONARY DATA ---
-const DICTIONARY = {
+const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "hải sản": { EN: "seafood", type: "Noun" },
   "tôm hùm": { EN: "lobster", type: "Noun" },
   "cua cà mau": { EN: "Ca Mau crab", type: "Noun" },
   "thịt bò": { EN: "beef", type: "Noun" },
   "thịt heo": { EN: "pork", type: "Noun" },
   "thịt gà": { EN: "chicken", type: "Noun" },
-  "thịt vịt": { EN: "duck", type: "Noun" },
-  "thịt cừu": { EN: "lamb", type: "Noun" },
   "cá hồi": { EN: "salmon", type: "Noun" },
-  "mực lá": { EN: "bigfin reef squid", type: "Noun" },
-  "nghêu": { EN: "clam", type: "Noun" },
-  "ốc": { EN: "snail / shellfish", type: "Noun" },
-  "phi lê": { EN: "fillet", type: "Noun" },
-  "sườn non": { EN: "baby back ribs", type: "Noun" },
-  "ba chỉ": { EN: "pork belly", type: "Noun" },
+  "mực lá": { EN: "squid", type: "Noun" },
   "mua": { EN: "to buy", type: "Verb" },
   "cân": { EN: "to weigh", type: "Verb" },
-  "làm sạch": { EN: "to clean / process", type: "Verb" },
-  "giao hàng": { EN: "to deliver", type: "Verb" },
-  "chế biến": { EN: "to cook / prepare", type: "Verb" },
-  "tươi sống": { EN: "fresh / alive", type: "Adj" },
-  "ngon": { EN: "delicious", type: "Adj" },
-  "ngọt thịt": { EN: "sweet meat (flavor)", type: "Adj" },
-  "béo ngậy": { EN: "fatty / creamy", type: "Adj" },
-  "ạ": { EN: "Polite particle", type: "Particle" },
-  "nha": { EN: "Friendly particle", type: "Particle" },
-  "nhé": { EN: "Gentle suggestion", type: "Particle" },
-  "luôn": { EN: "Right away", type: "Particle" }
+  "tươi sống": { EN: "fresh/alive", type: "Adj" },
+  "ngon": { EN: "delicious", type: "Adj" }
 };
 
 const LANGUAGES = {
   EN: {
     label: "English",
-    ui_welcome: "Welcome to Thanh's Fresh Market! I'm Thanh.",
+    ui_welcome: "Welcome to Thanh's Fresh Market!",
     ui_start: "SHOP NOW",
-    ui_placeholder: "Talk to Thanh here...",
+    ui_placeholder: "Type to talk to Thanh...",
     ui_status: "Online - Expert Merchant",
-    ui_learning_title: "Chat with Thanh Merchant",
-    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Hi! I have all kinds of fresh meat and seafood at market prices, what would you like? ✨",
+    ui_learning_title: "Market Chat with Thanh",
+    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua gì ủng hộ em không ạ? ✨ | Hi! I have fresh meat and seafood, what would you like to buy? ✨",
     systemPromptLang: "English"
   },
   RU: {
     label: "Русский",
-    ui_welcome: "Добро пожаловать к Тхань! Я Тхань, ваш продавец.",
+    ui_welcome: "Добро пожаловать к Тхань!",
     ui_start: "КУПИТЬ",
-    ui_placeholder: "Поговори с Тхань здесь...",
-    ui_status: "В сети - Эксперт по рынку",
+    ui_placeholder: "Поговори с Тхань...",
+    ui_status: "В сети - Эксперт",
     ui_learning_title: "Общение с продавцом",
-    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh muốn mua thịt hay hải sản gì ạ? ✨ | Привет! У меня есть все виды свежего мяса и морепродуктов по рыночным ценам, что вы хотите? ✨",
+    welcome_msg: "Chào Anh! Nhà em có đủ các loại thịt tươi và hải sản ngon giá chợ, Anh xem mua gì nhé! ✨ | Привет! У меня есть свежее мясо и морепродукты, что вы хотите? ✨",
     systemPromptLang: "Russian"
   }
 };
 
-export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ character }) => {
-  const [gameState, setGameState] = useState('start');
+const getSystemPrompt = (targetLangName: string) => {
+  return `You are Thanh (25 years old), a lively and clever merchant at a fresh meat and seafood market.
+ROLE: You are a seller, NOT a teacher.
+STRICT RULE 1: Speak ONLY natural, southern/northern casual Vietnamese. Use "Dạ", "ạ", "nha", "tươi rói".
+STRICT RULE 2: Keep responses extremely short (1-2 sentences).
+STRICT RULE 3: DO NOT explain grammar. DO NOT provide lessons. DO NOT repeat "Hello" unnecessarily.
+STRICT RULE 4: Focus ONLY on selling meat/seafood, prices (using "nghìn"), weight, and how to cook.
+FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]`;
+};
+
+export const GameSpeakAIMeatSeafood: React.FC<{ character: any }> = ({ character }) => {
+  const [gameState, setGameState] = useState<'start' | 'playing'>('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -74,6 +67,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
+  const isProcessingRef = useRef(false);
 
   const t = LANGUAGES[selectedLang];
 
@@ -84,20 +78,16 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.lang = 'vi-VN';
-      recognition.onstart = () => setIsRecording(true);
-      recognition.onresult = (e: any) => {
-        const text = e.results[0][0].transcript;
-        handleSendMessage(text);
-      };
+      recognition.onresult = (e: any) => handleSendMessage(e.results[0][0].transcript);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, []);
+  }, [selectedLang]);
 
   // --- TTS LOGIC ---
-  const speak = async (text: string, msgId: string | null = null) => {
+  const speak = useCallback(async (text: string, msgId: string | null = null) => {
     if (msgId) setActiveVoiceId(msgId);
-    let cleanText = text.split('|')[0].trim().replace(/[*]/g, '');
+    let cleanText = text.split('|')[0].trim().replace(/[*#]/g, '');
     cleanText = cleanText.replace(/(\d+)\.000/g, '$1 nghìn').replace(/(\d+)k/gi, '$1 nghìn');
     
     if(!cleanText) return;
@@ -107,94 +97,80 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     audioRef.current.playbackRate = speechRate;
     audioRef.current.onended = () => setActiveVoiceId(null);
     audioRef.current.play().catch(() => setActiveVoiceId(null));
-  };
+  }, [speechRate]);
 
-  // --- AI ENGINE WITH KEY ROTATION ---
+  // --- AI ENGINE ---
   const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isThinking) return;
-    
-    const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text, id: userMsgId }]);
-    setUserInput("");
+    if (!text.trim() || isProcessingRef.current) return;
+    isProcessingRef.current = true;
     setIsThinking(true);
 
-    try {
-      const payload = {
-        model: "gemini-3-flash-preview",
-        config: {
-          systemInstruction: `
-            BỐI CẢNH: Bạn tên là Thanh (25 tuổi), một tiểu thương niềm nở, lanh lợi tại chợ hải sản và thịt tươi sống.
-            NHIỆM VỤ: Tư vấn các loại thịt (bò, heo, gà, vịt, cừu) và hải sản (tôm hùm, cua, cá hồi, mực, nghêu, ốc).
-            PHONG CÁCH: Năng động, khéo léo chốt đơn, luôn ưu tiên đồ tươi sống.
-            ĐỊNH DẠNG PHẢN HỒI: "Câu tiếng Việt tự nhiên | Dịch sang ${t.systemPromptLang}".
-            QUY TẮC:
-            1. Luôn xưng "Em" và gọi khách là "Anh/Chị".
-            2. Sử dụng các từ ngữ địa phương chợ búa nhưng lịch sự như: "Dạ", "ạ", "nha", "ngon hết sảy", "tươi rói".
-            3. Tư vấn giá cả (giả định) và cách chế biến món ăn ngon từ loại thịt/hải sản khách hỏi.
-            4. Không sử dụng ký tự đặc biệt như *. Trả lời tối đa 3 câu.
-          `
-        },
-        contents: [
-          ...messages.slice(-4).map(m => ({
-            role: m.role === 'ai' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          })),
-          { role: 'user', parts: [{ text: text }] }
-        ]
-      };
+    const userMsgId = `user-${Date.now()}`;
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
+    setMessages(prev => [...prev, newUserMsg]);
+    setUserInput("");
 
-      const response = await generateContentWithRetry(payload);
-      const aiText = response.text || (selectedLang === 'RU' ? "Извините, я не поняла | Em chưa rõ ý Anh ạ." : "Sorry, I didn't get that | Em chưa rõ ý Anh ạ.");
+    try {
+      // THE CHỐT: Lọc lịch sử để AI chỉ thấy tiếng Việt thuần túy
+      const chatHistory = messages.map(m => ({
+        role: m.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: m.text.split('|')[0].trim() }]
+      }));
+
+      const response = await generateContentWithRetry({
+        model: 'gemini-3-flash-preview',
+        contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
+        config: { 
+            systemInstruction: getSystemPrompt(t.systemPromptLang)
+        }
+      });
+
+      const rawAiResponse = response.text || "";
+      const parts = rawAiResponse.split('|');
+      const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
+      const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
       
+      const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
+      const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
+
       const aiMsgId = `ai-${Date.now()}`;
-      setMessages(prev => [...prev, { role: 'ai', text: aiText, id: aiMsgId }]);
-      speak(aiText, aiMsgId);
+      const cleanDisplay = `${aiVi} | ${aiTrans}`;
+
+      setMessages(prev => {
+        const updated = [...prev];
+        const userIdx = updated.findIndex(m => m.id === userMsgId);
+        if (userIdx !== -1 && userTranslationValue) {
+            updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
+        }
+        return [...updated, { role: 'ai', text: cleanDisplay, id: aiMsgId }];
+      });
+
+      speak(cleanDisplay, aiMsgId);
 
     } catch (e) {
       console.error("Lỗi AI Thanh:", e);
     } finally {
       setIsThinking(false);
+      isProcessingRef.current = false;
     }
   };
 
-  // --- INTERACTIVE DICTIONARY ---
   const renderInteractiveText = (text: string) => {
-    if (!text) return null;
-    const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
-    let result: any[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      let match = null;
-      for (const key of sortedKeys) {
-        if (remaining.toLowerCase().startsWith(key)) {
-          match = { key, original: remaining.slice(0, key.length), info: (DICTIONARY as any)[key] };
-          break;
-        }
-      }
-
-      if (match) {
-        let typeColor = "text-blue-400";
-        if (match.info.type === "Verb") typeColor = "text-emerald-400";
-        else if (match.info.type === "Adj") typeColor = "text-cyan-400";
-
-        result.push(
-          <span key={remaining.length} className="group relative inline-block border-b border-dotted border-emerald-400 hover:border-emerald-600 cursor-help px-0.5 transition-colors font-bold text-emerald-900">
-            {match.original}
-            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-900 text-white text-[10px] p-2 rounded-xl z-50 shadow-2xl border border-slate-700">
-              <div className={`font-black uppercase text-[8px] mb-1 ${typeColor}`}>{match.info.type}</div>
-              <div className="font-bold">{match.info.EN}</div>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+    return text.split(/(\s+)/).map((word, idx) => {
+      const clean = word.toLowerCase().replace(/[.,!?;]/g, '');
+      const entry = DICTIONARY[clean];
+      if (entry) {
+        return (
+          <span key={idx} className="group relative border-b border-dotted border-emerald-400 cursor-help text-emerald-700 font-bold">
+            {word}
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg z-50 w-max shadow-xl">
+              {entry.EN}
             </span>
           </span>
         );
-        remaining = remaining.slice(match.original.length);
-      } else {
-        result.push(remaining[0]);
-        remaining = remaining.slice(1);
       }
-    }
-    return result;
+      return <span key={idx}>{word}</span>;
+    });
   };
 
   const toggleFullscreen = () => {
@@ -211,7 +187,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
 
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-[#f0f9ff] flex items-center justify-center p-4 min-h-[500px]">
+      <div className="w-full h-full bg-[#f0f9ff] flex items-center justify-center p-4">
         <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-emerald-50">
           <div className="w-48 h-48 mx-auto mb-6 rounded-3xl overflow-hidden shadow-lg border-4 border-white rotate-3">
             <img src={character.avatarUrl} alt="Thanh" className="w-full h-full object-cover" />
@@ -219,13 +195,13 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
           <h1 className="text-4xl font-black text-emerald-800 mb-2 uppercase tracking-tighter italic">Thanh's Fresh 🦀</h1>
           <p className="text-slate-400 mb-8 font-medium italic">{t.ui_welcome}</p>
           <div className="flex gap-4 justify-center mb-10">
-            {['EN', 'RU'].map(l => (
-              <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-emerald-600 text-white shadow-xl scale-105' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
-                {LANGUAGES[l as 'EN' | 'RU'].label}
+            {(['EN', 'RU'] as const).map(l => (
+              <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-emerald-600 text-white shadow-xl scale-105' : 'bg-slate-100 text-slate-400'}`}>
+                {LANGUAGES[l].label}
               </button>
             ))}
           </div>
-          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="group relative w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95">
+          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
             <Play fill="white" /> {t.ui_start}
           </button>
         </div>
@@ -234,72 +210,75 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
   }
 
   return (
-    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative min-h-[600px]">
-      <div className="w-full h-full max-w-7xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl border-0 md:border-[10px] border-emerald-50/30">
+    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative">
+      <div className="w-full h-full max-w-7xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
         
         {/* SIDEBAR */}
-        <div className="h-[25vh] md:h-full md:w-1/3 bg-emerald-50/30 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-emerald-100 shrink-0">
+        <div className="h-[25vh] md:h-full md:w-1/3 bg-emerald-50/30 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-emerald-100 shrink-0 shadow-2xl z-20">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <div className="relative">
               <img src={character.avatarUrl} className="w-24 h-24 md:w-64 md:h-64 rounded-[2.5rem] border-4 border-white shadow-2xl object-cover" alt="Thanh" />
-              {isThinking && <div className="absolute inset-0 bg-emerald-900/10 backdrop-blur-sm rounded-[2.5rem] flex items-center justify-center animate-pulse"><div className="w-3 h-3 bg-emerald-600 rounded-full mx-1"></div></div>}
             </div>
             <div className="text-left md:text-center">
               <h2 className="text-2xl md:text-4xl font-black text-emerald-900 italic">Thanh 🦀</h2>
-              <div className="flex items-center gap-2 mt-1 md:justify-center">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
-                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{t.ui_status}</span>
-              </div>
+              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">{t.ui_status}</span>
             </div>
           </div>
           
-          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl active:scale-90 ${isRecording ? 'bg-red-500 ring-[12px] ring-red-50' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
+          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
             {isRecording ? <MicOff color="white" size={32} /> : <Mic color="white" size={32} />}
           </button>
         </div>
 
         {/* CHAT AREA */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
-          <header className="px-8 py-5 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-md z-10 shadow-sm">
+          <header className="px-8 py-5 border-b flex items-center justify-between bg-white z-10 shadow-sm">
             <div>
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
               <div className="flex items-center gap-2 mt-1">
                 <Globe size={12} className="text-emerald-500" />
-                <span className="text-xs font-black text-emerald-600 uppercase">Fresh & Organic 🌿</span>
+                <span className="text-xs font-black text-emerald-600 uppercase tracking-tighter">Fresh & Organic 🌿</span>
               </div>
             </div>
             <div className="flex gap-3">
-               <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.75 : 1.0)} className="bg-orange-50 text-orange-600 px-4 py-2 rounded-2xl font-black text-xs flex items-center gap-2 transition-colors hover:bg-orange-100"><Gauge size={16}/> {Math.round(speechRate * 100)}%</button>
+               <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-4 py-2 rounded-2xl font-black text-xs flex items-center gap-2">
+                 <Gauge size={16}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+               </button>
                <button onClick={toggleFullscreen} className="p-2.5 bg-slate-50 text-slate-400 rounded-2xl hover:text-emerald-600 transition-colors"><Maximize size={20}/></button>
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-emerald-50/5 scroll-smooth custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-emerald-50/5 custom-scrollbar">
             {messages.map((msg) => {
               const parts = msg.text.split('|');
-              const isActive = activeVoiceId === msg.id;
               return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-5 md:p-8 rounded-[2.5rem] transition-all duration-300 shadow-sm ${isActive ? 'ring-4 ring-emerald-100 scale-[1.01] shadow-xl' : ''} ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-50'}`}>
+                  <div className={`max-w-[85%] p-5 rounded-[2.5rem] shadow-sm ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-emerald-50'}`}>
                     <div className="flex items-start justify-between gap-6">
-                      <div className="text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : parts[0]}</div>
-                      <button onClick={() => speak(msg.text, msg.id)} className={`p-3 rounded-2xl transition-colors ${msg.role === 'user' ? 'bg-emerald-600/50 text-white hover:bg-emerald-500' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}><Volume2 size={20}/></button>
+                      <div className="text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.text}</div>
+                      <button onClick={() => speak(msg.text, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
                     </div>
-                    {parts[1] && <div className={`mt-4 pt-4 border-t text-xs italic font-medium tracking-wide ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>{parts[1]}</div>}
+                    {(parts[1] || msg.translation) && (
+                      <div className={`mt-4 pt-4 border-t text-xs italic font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>
+                        {msg.role === 'ai' ? parts[1] : msg.translation}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
-            {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse uppercase tracking-widest italic ml-4">Thanh đang nghe Anh...</div>}
+            {isThinking && <div className="text-[10px] font-black text-emerald-400 animate-pulse italic ml-4 uppercase">Thanh đang nghe...</div>}
             <div ref={chatEndRef} />
           </div>
 
-          <footer className="p-6 md:p-10 bg-white border-t border-slate-100 flex gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] pb-10 md:pb-10">
-            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg transition-all focus:bg-white focus:ring-4 ring-emerald-50 placeholder:text-slate-300 shadow-inner" />
-            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"><Send size={24}/></button>
+          <footer className="p-6 md:p-10 bg-white border-t flex gap-4 pb-10">
+            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-emerald-50 transition-all shadow-inner" />
+            <button onClick={() => handleSendMessage(userInput)} className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl hover:scale-105 active:scale-95 transition-all"><Send size={24}/></button>
           </footer>
         </div>
       </div>
     </div>
   );
 };
+
+export default GameSpeakAIMeatSeafood;
