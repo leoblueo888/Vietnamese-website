@@ -68,7 +68,7 @@ const getTranslations = (topic?: string | null) => {
   };
 };
 
-// Hàm xử lý dấu câu riêng cho Mai (Giống Thu)
+// Hàm xử lý dấu câu riêng cho Mai
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
@@ -93,12 +93,12 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   const [activeVoiceId, setActiveVoiceId] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef(new Audio());
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  const safeAvatar = character?.avatarUrl || "https://lh3.googleusercontent.com/d/1l8eqtV6ISGB2-KTg0ysbPIflAIw6bN9D";
+  const safeAvatar = character?.avatarUrl || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop";
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
@@ -106,7 +106,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
   const t = getTranslations(topic)[selectedLang];
 
-  // --- RECOGNITION (Đã fix để tự động gửi sau khi im lặng giống Thu) ---
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -132,7 +132,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
                 const punctuated = await punctuateText(currentTranscript.trim());
                 handleSendMessage(punctuated, true);
             }
-        }, 2500);
+        }, 2000);
       };
 
       recognition.onerror = () => setIsRecording(false);
@@ -147,6 +147,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].replace(/[*_`#]/g, '').trim();
     
+    // Tách thành các đoạn nhỏ dựa trên dấu câu để đọc mượt hơn
     const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
         if (idx % 2 === 0) {
           const nextPunct = arr[idx + 1] || "";
@@ -160,11 +161,20 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         for (const segment of segments) {
             await new Promise<void>(resolve => {
                 const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-                audioRef.current.src = url;
-                audioRef.current.playbackRate = speechRate;
-                audioRef.current.onended = () => resolve();
-                audioRef.current.onerror = () => resolve();
-                audioRef.current.play().catch(resolve);
+                if (audioRef.current) {
+                    audioRef.current.src = url;
+                    audioRef.current.playbackRate = speechRate;
+                    audioRef.current.onended = () => resolve();
+                    audioRef.current.onerror = () => resolve();
+                    audioRef.current.play().catch(resolve);
+                } else {
+                    const audio = new Audio(url);
+                    audio.playbackRate = speechRate;
+                    audio.onended = () => resolve();
+                    audio.onerror = () => resolve();
+                    audio.play().catch(resolve);
+                    audioRef.current = audio;
+                }
             });
         }
     } finally {
@@ -172,7 +182,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     }
   };
 
-  // --- AI BRIDGE (Đã đồng bộ với cấu trúc generateContentWithRetry) ---
+  // --- AI BRIDGE ---
   const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -241,7 +251,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // --- RENDER TEXT (Từ điển thông minh) ---
+  // --- RENDER TEXT ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -321,9 +331,14 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
           <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-white z-10">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Heart size={14} className="text-orange-500" fill="currentColor"/> {t.ui_learning_title}</span>
-            <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.8 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-2 uppercase tracking-tighter">
-              <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.8 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-2 uppercase tracking-tighter">
+                <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+              </button>
+              {onBack && (
+                 <button onClick={onBack} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase">BACK</button>
+              )}
+            </div>
           </header>
 
           <div className="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 bg-orange-50/10 custom-scrollbar">
@@ -350,8 +365,17 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           </div>
 
           <footer className="p-6 md:p-8 bg-white border-t border-slate-100 flex gap-3">
-            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold shadow-inner" />
-            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center"><Send size={20}/></button>
+            <input 
+                type="text" 
+                value={userInput} 
+                onChange={e => setUserInput(e.target.value)} 
+                onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} 
+                placeholder={t.ui_placeholder} 
+                className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold shadow-inner" 
+            />
+            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center">
+                <Send size={20}/>
+            </button>
           </footer>
         </div>
       </div>
