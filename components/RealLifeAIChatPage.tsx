@@ -1,11 +1,10 @@
-
-import React, {useEffect, useRef} from 'react';
-import { Language, ViewType } from '../App';
+import React, {useEffect} from 'react';
+import { Language } from '../App';
 import { SpeakingUnit } from './SpeakingPage';
-import { getAIFriends } from '../constants';
-// FIX: AIFriend type should be imported from the central types.ts file, not from another component.
+// FIX: Đảm bảo import đúng từ types và constants
 import type { AIFriend } from '../types';
 
+// IMPORT các game từ thư mục /games - Đảm bảo tên file phải viết HOA đúng từng chữ
 import { AIfriendLan } from '../games/AIfriendLan';
 import { AInewfriendThu } from '../games/AInewfriendThu';
 import { AInewfriendMai } from '../games/AInewfriendMai';
@@ -30,9 +29,9 @@ export const RealLifeAIChatPage: React.FC<RealLifeAIChatPageProps> = ({ unit, ch
     ru: { speaking: 'Разговор', rls: 'Реальные ситуации', aiChat: `Разговор с ИИ-продавцом` }
   }[language];
 
+  // Logic trừ credit theo thời gian (giữ nguyên của bạn)
   useEffect(() => {
     const startTime = performance.now();
-
     return () => {
       const durationInSeconds = Math.round((performance.now() - startTime) / 1000);
       if (durationInSeconds > 1 && credit > 0) {
@@ -42,41 +41,38 @@ export const RealLifeAIChatPage: React.FC<RealLifeAIChatPageProps> = ({ unit, ch
   }, [setCredit, credit]);
 
   const renderAIChat = () => {
-    // The user requested to remove the games for these specific lessons to make way for new ones.
-    const unitsToClear: string[] = [];
-    if (unitsToClear.includes(unit.id)) {
-        // Return an empty container as requested.
-        return <div className="w-full h-full bg-slate-200"></div>;
-    }
-
-    if (unit.id === 'buySmoothie' && character.name === 'Xuân') {
+    // 1. Game Nước ép (Smoothie)
+    if (unit.id === 'buySmoothie' || character.name === 'Xuân') {
       return <GameSpeakAISmoothie character={character} />;
     }
 
-    if (unit.id === 'buyFruits' && character.name === 'Hạnh') {
+    // 2. Game Hoa quả (Hạnh)
+    if (unit.id === 'buyFruits' || character.name === 'Hạnh') {
       return <HanhAIfruitseller character={character} />;
     }
     
-    if (unit.id === 'buyVeggies' && character.name === 'Phương') {
+    // 3. Game Rau củ (Phương)
+    if (unit.id === 'buyVeggies' || character.name === 'Phương') {
       return <GameSpeakAIVegetables character={character} />;
     }
 
-    if (unit.id === 'buyMeat' && character.name === 'Thanh') {
+    // 4. Game Thịt & Hải sản (Thanh)
+    if (unit.id === 'buyMeat' || character.name === 'Thanh') {
       return <GameSpeakAIMeatSeafood character={character} />;
     }
 
-    if (unit.id === 'atRestaurant' && character.name === 'Linh') {
+    // 5. Game Nhà hàng (Linh)
+    if (unit.id === 'atRestaurant' || character.name === 'Linh') {
       return <GameSpeakAIRestaurant character={character} />;
     }
 
-    // Fallback to other character games if needed, though the current flow for other
-    // real-life situations doesn't lead here yet.
+    // Các nhân vật khác
     switch(character.name) {
       case 'Lan': return <AIfriendLan onBack={onBack} />;
       case 'Thu': return <AInewfriendThu onBack={onBack} />;
       case 'Mai': return <AInewfriendMai onBack={onBack} />;
       default: 
-        return <div>AI Character game not configured for this lesson.</div>;
+        return <div className="p-10 text-center">AI Character game not configured for this lesson.</div>;
     }
   };
 
@@ -84,13 +80,11 @@ export const RealLifeAIChatPage: React.FC<RealLifeAIChatPageProps> = ({ unit, ch
     <div className="pt-24 md:pt-32 pb-32 bg-white min-h-screen">
       <div className="max-w-[1200px] mx-auto px-6">
         <nav className="flex items-center gap-2 text-[13px] text-slate-400 mb-12 uppercase tracking-widest font-bold flex-wrap">
-          <span className="hover:text-[#1e5aa0] cursor-pointer transition-colors">{t.speaking}</span>
+          <span className="hover:text-[#1e5aa0] cursor-pointer" onClick={onBack}>{t.speaking}</span>
           <span className="text-slate-300">/</span>
-          <span className="hover:text-[#1e5aa0] cursor-pointer transition-colors" onClick={onBack}>{t.rls}</span>
+          <span className="hover:text-[#1e5aa0] cursor-pointer" onClick={onBack}>{t.rls}</span>
           <span className="text-slate-300">/</span>
-          <span className="hover:text-[#1e5aa0] cursor-pointer transition-colors" onClick={onBack}>{unit.title}</span>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-800">{t.aiChat}</span>
+          <span className="hover:text-[#1e5aa0] cursor-pointer font-black text-blue-600">{unit.title}</span>
         </nav>
         
         <div className="w-full max-w-5xl mx-auto aspect-[9/16] md:aspect-video relative overflow-hidden rounded-3xl shadow-2xl border border-slate-200 bg-slate-100">
