@@ -45,7 +45,7 @@ const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
         });
         return response.text?.trim() || rawText;
@@ -130,6 +130,8 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
                     audio.play().catch(reject);
                 });
             }
+        } catch (error) {
+            console.error("Audio error:", error);
         } finally {
             setActiveVoiceId(null);
         }
@@ -183,7 +185,7 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
             }));
 
             const response = await generateContentWithRetry({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-1.5-flash',
                 contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
                 config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
             });
