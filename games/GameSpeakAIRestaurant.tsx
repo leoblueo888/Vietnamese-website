@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Gauge, Maximize, Minimize } from 'lucide-react';
+import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
 // --- DICTIONARY: TỪ VỰNG NHÀ HÀNG ---
@@ -87,7 +88,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (e: any) => {
         const text = e.results[0][0].transcript;
-        handleSendMessage(text, true); // Gọi kèm flag fromMic
+        handleSendMessage(text, true);
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
@@ -95,7 +96,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
   }, []);
 
   // --- TTS ---
-  const speakWord = async (text: string, msgId: string | null = null) => {
+  const speakWord = useCallback(async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].replace(/(\d+)k/g, '$1 nghìn').replace(/[*]/g, '').trim();
@@ -104,7 +105,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
     audioRef.current.playbackRate = speechRate;
     audioRef.current.play().catch(console.error);
     audioRef.current.onended = () => setActiveVoiceId(null);
-  };
+  }, [speechRate]);
 
   // --- AI BRIDGE ---
   const handleSendMessage = async (text: string, fromMic = false) => {
@@ -114,38 +115,33 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
 
     let processedInput = text.trim();
 
-    // CHỖ DÙNG MODEL 1: Xử lý lại văn bản từ giọng nói (Voice Reformat)
+    // Xử lý lại văn bản từ giọng nói bằng AI chuẩn
     if (fromMic) {
       try {
-        const voiceResponse = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Sửa lỗi chính tả câu này để nó tự nhiên hơn: "${processedInput}"`,
-            systemPrompt: "Bạn là trợ lý sửa văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không thêm dấu ngoặc."
-          })
+        const voiceResponse = await generateContentWithRetry({
+          model: 'gemini-1.5-flash',
+          contents: [{ role: 'user', parts: [{ text: `Sửa lỗi chính tả câu này để nó tự nhiên hơn: "${processedInput}"` }] }],
+          config: { systemInstruction: "Bạn là trợ lý sửa văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không thêm dấu ngoặc." }
         });
-        const voiceData = await voiceResponse.json();
-        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
+        if (voiceResponse.text) processedInput = voiceResponse.text.trim().replace(/^"|"$/g, '');
       } catch (e) { console.error("Lỗi lọc voice:", e); }
     }
 
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
+    const newUserMsg = { role: 'user', text: processedInput, id: userMsgId };
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
 
-    // CHỖ DÙNG MODEL 2: Nhập vai nhân vật Linh
+    // Nhập vai nhân vật Linh qua API chuẩn
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: processedInput,
-          history: messages.map(m => ({
-            role: m.role === 'ai' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          })),
-          systemPrompt: `
+      const response = await generateContentWithRetry({
+        model: 'gemini-1.5-flash',
+        contents: [...messages, newUserMsg].map(m => ({
+          role: m.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: m.text.split('|')[0].trim() }]
+        })),
+        config: {
+          systemInstruction: `
             BỐI CẢNH: Bạn tên là Linh (22 tuổi), nhân viên phục vụ nhà hàng chuyên nghiệp.
             NHIỆM VỤ: Chào đón, xếp bàn, lấy món và hỗ trợ khách hàng.
             ĐỊNH DẠNG: Tiếng Việt | Dịch sang ${t.systemPromptLang}.
@@ -155,18 +151,17 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
             3. Nếu đã có bàn, hỏi: "Anh muốn dùng món gì ạ? Em có thực đơn ở đây".
             4. Phản hồi ngắn gọn, không giải thích dài dòng, không dùng ký tự *.
           `
-        })
+        }
       });
 
-      const data = await response.json();
-      if (data.text) {
+      if (response.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        const cleanAIData = data.text.replace(/[*]/g, '');
+        const cleanAIData = response.text.replace(/[*]/g, '');
         setMessages(prev => [...prev, { role: 'ai', text: cleanAIData, id: aiMsgId }]);
         speakWord(cleanAIData, aiMsgId);
       }
     } catch (e) {
-      console.error("API Error:", e);
+      console.error("AI Error:", e);
     } finally {
       setIsThinking(false);
       isProcessingRef.current = false;
