@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, Gauge, Heart } from 'lucide-react';
 import type { AIFriend } from '../types';
+// ĐỒNG BỘ: Sử dụng hệ thống xoay vòng Key đã fix lỗi
 import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- DICTIONARY DATA ---
@@ -67,6 +68,7 @@ const getTranslations = (topic?: string | null) => {
   };
 };
 
+// Hàm xử lý dấu câu riêng cho Mai (Giống Thu)
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
@@ -80,7 +82,7 @@ const punctuateText = async (rawText: string) => {
     }
 };
 
-export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | null, character?: AIFriend }> = ({ onBack, topic, character }) => {
+export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | null, character: AIFriend }> = ({ onBack, topic, character }) => {
   const [gameState, setGameState] = useState('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
   const [messages, setMessages] = useState<any[]>([]);
@@ -91,12 +93,12 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   const [activeVoiceId, setActiveVoiceId] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
 
-  const safeAvatar = character?.avatarUrl || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop";
+  const safeAvatar = character?.avatarUrl || "https://lh3.googleusercontent.com/d/1l8eqtV6ISGB2-KTg0ysbPIflAIw6bN9D";
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
   const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
@@ -104,6 +106,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
   const t = getTranslations(topic)[selectedLang];
 
+  // --- RECOGNITION (Đã fix để tự động gửi sau khi im lặng giống Thu) ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -127,9 +130,9 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
             if (currentTranscript.trim() && !isProcessingRef.current) {
                 recognition.stop();
                 const punctuated = await punctuateText(currentTranscript.trim());
-                handleSendMessage(punctuated);
+                handleSendMessage(punctuated, true);
             }
-        }, 2200);
+        }, 2500);
       };
 
       recognition.onerror = () => setIsRecording(false);
@@ -138,16 +141,17 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     }
   }, [selectedLang]);
 
+  // --- TTS ---
   const speakWord = async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    if (audioRef.current) audioRef.current.pause();
-
     const cleanText = text.split('|')[0].replace(/[*_`#]/g, '').trim();
-    const segments = cleanText.split(/([.!?])\s/).reduce((acc: string[], cur, i, arr) => {
-        if (i % 2 === 0) {
-            const combined = (cur + (arr[i+1] || "")).trim();
-            if (combined) acc.push(combined);
+    
+    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
+        if (idx % 2 === 0) {
+          const nextPunct = arr[idx + 1] || "";
+          const combined = (current + nextPunct).trim();
+          if (combined) acc.push(combined);
         }
         return acc;
     }, []);
@@ -156,12 +160,11 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
         for (const segment of segments) {
             await new Promise<void>(resolve => {
                 const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-                const audio = new Audio(url);
-                audio.playbackRate = speechRate;
-                audioRef.current = audio;
-                audio.onended = () => resolve();
-                audio.onerror = () => resolve();
-                audio.play().catch(resolve);
+                audioRef.current.src = url;
+                audioRef.current.playbackRate = speechRate;
+                audioRef.current.onended = () => resolve();
+                audioRef.current.onerror = () => resolve();
+                audioRef.current.play().catch(resolve);
             });
         }
     } finally {
@@ -169,40 +172,50 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     }
   };
 
-  const handleSendMessage = async (text: string) => {
+  // --- AI BRIDGE (Đã đồng bộ với cấu trúc generateContentWithRetry) ---
+  const handleSendMessage = async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
 
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null }]);
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
+    
+    const currentHistory = [...messages, newUserMsg];
+    setMessages(currentHistory);
     setUserInput("");
 
     try {
-      const response = await generateContentWithRetry({
+      const chatPayload = {
         model: "gemini-3-flash-preview",
-        systemInstruction: `
+        config: {
+          systemInstruction: `
             BỐI CẢNH: Bạn là Mai, một người phụ nữ 45 tuổi đến từ Ninh Bình (Năm 2026).
             VAI TRÒ: Một người bạn thân thiện, xưng "Tôi" và gọi người dùng (${userName}) là "${userPronoun}".
             TÍNH CÁCH: Nhẹ nhàng, ấm áp, nồng hậu đậm chất phụ nữ miền Bắc. Bạn có một sạp nhỏ bán kem và sinh tố tại Ninh Bình.
             NHIỆM VỤ: Trò chuyện làm quen, hỏi thăm chân thành. Nếu có chủ đề "${topic || 'tự do'}", hãy tập trung vào đó.
             ĐỊNH DẠNG TRẢ LỜI: Vietnamese_Text | ${t.systemPromptLang}_Translation | USER_TRANSLATION: [Dịch ngắn gọn ý của người dùng sang ${t.systemPromptLang}]
             QUY TẮC: Tối đa 1-3 câu. Luôn kết thúc bằng một câu hỏi quan tâm để duy trì hội thoại.
-        `,
-        contents: [...messages, { role: 'user', text: text.trim() }].map(m => ({
+          `
+        },
+        contents: currentHistory.map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: (m.text || "").split('|')[0].trim() }]
         }))
-      });
+      };
 
-      if (response.text) {
-        const rawAiResponse = response.text;
+      const data = await generateContentWithRetry(chatPayload);
+
+      if (data.text) {
+        const rawAiResponse = data.text;
         const parts = rawAiResponse.split('|');
         const aiVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
         const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
+        
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
         
+        const cleanAIDisplay = `${aiVi} | ${aiTrans}`;
         const aiMsgId = `ai-${Date.now()}`;
 
         setMessages(prev => {
@@ -211,10 +224,10 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           if (userIdx > -1 && userTranslationValue) {
             updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
           }
-          return [...updated, { role: 'ai', text: `${aiVi} | ${aiTrans}`, id: aiMsgId }];
+          return [...updated, { role: 'ai', text: cleanAIDisplay, id: aiMsgId }];
         });
 
-        speakWord(`${aiVi} | ${aiTrans}`, aiMsgId);
+        speakWord(cleanAIDisplay, aiMsgId);
       }
     } catch (error) {
       console.error("Mai AI Error:", error);
@@ -228,6 +241,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // --- RENDER TEXT (Từ điển thông minh) ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -268,13 +282,13 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           <h1 className="text-4xl font-black text-orange-600 mb-2 italic uppercase">Mai Ninh Bình 🍨</h1>
           <p className="text-slate-400 mb-10 font-medium italic">"Dạ, Mai chào {userPronoun}. Rất vui được làm bạn!"</p>
           <div className="flex gap-4 justify-center mb-10">
-            {(['EN', 'RU'] as const).map(l => (
-              <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-orange-600 text-white shadow-lg' : 'bg-orange-50 text-orange-400'}`}>
+            {['EN', 'RU'].map(l => (
+              <button key={l} onClick={() => setSelectedLang(l as any)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-orange-600 text-white shadow-lg' : 'bg-orange-50 text-orange-400'}`}>
                 {l}
               </button>
             ))}
           </div>
-          <button onClick={() => { setGameState('chat'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} 
+          <button onClick={() => { setGameState('chat'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); setTimeout(() => speakWord(t.welcome_msg, 'init'), 500); }} 
             className="w-full py-6 bg-orange-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3">
             <Play fill="white" /> {t.ui_start}
           </button>
@@ -286,6 +300,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   return (
     <div className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative font-sans">
       <div className="w-full h-full max-w-6xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
+        {/* Sidebar */}
         <div className="h-[20vh] md:h-full md:w-1/3 bg-orange-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-orange-100 shrink-0">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <div className="relative">
@@ -302,17 +317,13 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           </button>
         </div>
 
+        {/* Chat Area */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
           <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-white z-10">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Heart size={14} className="text-orange-500" fill="currentColor"/> {t.ui_learning_title}</span>
-            <div className="flex gap-2">
-              <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.8 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-2 uppercase tracking-tighter">
-                <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
-              </button>
-              {onBack && (
-                 <button onClick={onBack} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase">BACK</button>
-              )}
-            </div>
+            <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.8 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-2 uppercase tracking-tighter">
+              <Gauge size={14}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
+            </button>
           </header>
 
           <div className="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 bg-orange-50/10 custom-scrollbar">
@@ -338,18 +349,9 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
             <div ref={chatEndRef} />
           </div>
 
-          <footer className="p-6 md:p-8 bg-white border-t border-slate-100 flex gap-3 pb-10">
-            <input 
-                type="text" 
-                value={userInput} 
-                onChange={e => setUserInput(e.target.value)} 
-                onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} 
-                placeholder={t.ui_placeholder} 
-                className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold shadow-inner" 
-            />
-            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center">
-                <Send size={20}/>
-            </button>
+          <footer className="p-6 md:p-8 bg-white border-t border-slate-100 flex gap-3">
+            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold shadow-inner" />
+            <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center"><Send size={20}/></button>
           </footer>
         </div>
       </div>
