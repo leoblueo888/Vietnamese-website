@@ -105,7 +105,7 @@ const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
       });
       return response.text?.trim() || rawText;
@@ -149,7 +149,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
 
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash',
             contents: currentHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
