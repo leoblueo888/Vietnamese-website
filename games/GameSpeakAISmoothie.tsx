@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI } from '@google/generative-ai';
 import type { AIFriend } from '../types';
 
 // --- DATA & CONFIG ---
