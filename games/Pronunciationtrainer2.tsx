@@ -8,9 +8,9 @@ import { generateContentWithRetry } from '../config/apiKeys';
 const INITIAL_CONSONANTS = ["", "b", "c", "ch", "d", "đ", "g", "gh", "gi", "h", "k", "kh", "l", "m", "n", "ng", "ngh", "nh", "p", "ph", "qu", "r", "s", "t", "th", "tr", "v", "x"];
 
 /**
- * Core Model: Gemini 3 Flash
+ * Core Model: Gemini 2.5 Flash
  */
-const MODEL_NAME = "gemini-3-flash-preview";
+const MODEL_NAME = "gemini-2.5-flash";
 
 const TRANSLATIONS = {
   en: {
@@ -30,7 +30,7 @@ const TRANSLATIONS = {
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Prefix_Consonant",
-    footer: "Adaptive Engine // Gemini 3 Flash",
+    footer: "Adaptive Engine // Gemini 2.5 Flash",
     contextTitle: "Context",
     backBtn: "Exit"
   },
@@ -51,7 +51,7 @@ const TRANSLATIONS = {
     mobVC: "Dip + Con",
     mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Префикс_Согласная",
-    footer: "Движок: Gemini 3 Flash",
+    footer: "Движок: Gemini 2.5 Flash",
     contextTitle: "Контекст",
     backBtn: "Выход"
   }
@@ -154,7 +154,7 @@ export function GamePronunciationTrainer2() {
     vowels: generateValidTones(base, prefix)
   })).filter(family => family.vowels.length > 0);
 
-  // --- Cập nhật useEffect: Sử dụng "não" mới (Config API) ---
+  // --- LOGIC GỌI AI: ĐÃ CẬP NHẬT MODEL VÀ PAYLOAD CHUẨN ---
   useEffect(() => {
     if (!gameStarted) return;
     const fetchWordInfo = async () => {
@@ -162,25 +162,23 @@ export function GamePronunciationTrainer2() {
       try {
         const promptText = `
           Determine if the Vietnamese word "${currentFullWord}" is a real, meaningful word in Vietnamese. 
-          If it is NOT a commonly used word or lacks a clear meaning, set isValid to false and all other fields to null.
-          If it IS a valid word, provide its meaning and a context sentence translated into ${lang === 'en' ? 'English' : 'Russian'}.
-          
-          Return JSON: 
+          Return ONLY JSON: 
           {
             "isValid": boolean, 
-            "meaning": "Brief meaning (null if invalid)", 
-            "combo": "Natural short sentence in Vietnamese (null if invalid)", 
-            "comboMeaning": "Translation (null if invalid)"
+            "meaning": "Brief meaning in ${lang === 'en' ? 'English' : 'Russian'}", 
+            "combo": "A short natural Vietnamese sentence using this word", 
+            "comboMeaning": "Translation of that sentence"
           }`;
           
         const response = await generateContentWithRetry({
           model: MODEL_NAME,
-          contents: [{ parts: [{ text: promptText }] }],
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
           generationConfig: { responseMimeType: "application/json" }
         });
 
-        // Bóc tách JSON an toàn khỏi Markdown nếu có
-        const rawJson = response.text.replace(/```json|```/g, '').trim();
+        // Bóc tách text an toàn (Xử lý trường hợp response là string hoặc object)
+        const responseText = response.text || (typeof response === 'string' ? response : "");
+        const rawJson = responseText.replace(/```json|```/g, '').trim();
         const result = JSON.parse(rawJson || "{}");
         
         setWordDetails({
@@ -190,7 +188,7 @@ export function GamePronunciationTrainer2() {
           isValid: result.isValid
         });
       } catch (err) {
-        console.error("Lỗi AI Trainer 2:", err);
+        console.error("API Error in PronunciationTrainer2:", err);
         setWordDetails({ meaning: null, combo: null, comboMeaning: null, isValid: false });
       } finally {
         setIsLoadingDetails(false);
