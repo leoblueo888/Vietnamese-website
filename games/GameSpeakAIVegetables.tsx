@@ -45,7 +45,7 @@ const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
         });
         return response.text?.trim() || rawText;
@@ -64,9 +64,17 @@ STRICT RULE 4: Just focus on selling veggies, prices (using "nghìn"), and askin
 FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]`;
 };
 
-export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
+// --- ĐỔI TÊN THÀNH GameSpeakAIVegetables ĐỂ KHỚP VỚI FILE APP ---
+export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => void; language?: any; credit?: number; setCredit?: any; setIsCreditModalOpen?: any }> = ({ 
+    character, 
+    onBack, 
+    language: initialLanguage, 
+    credit, 
+    setCredit, 
+    setIsCreditModalOpen 
+}) => {
     const [gameState, setGameState] = useState<'start' | 'playing'>('start');
-    const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
+    const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>(initialLanguage === 'ru' ? 'RU' : 'EN');
     const [messages, setMessages] = useState<any[]>([]);
     const [isRecording, setIsRecording] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
@@ -95,20 +103,17 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
         }
     };
 
-    // --- TTS Logic (SMART AUDIO) ---
+    // --- TTS Logic ---
     const speak = useCallback(async (text: string, msgId: string | null = null) => {
         if (!text) return;
         if (msgId) setActiveVoiceId(msgId);
 
-        // Ngắt âm thanh cũ nếu đang phát
         if (currentAudioRef.current) {
             currentAudioRef.current.pause();
             currentAudioRef.current = null;
         }
 
         const viPart = text.split('|')[0].replace(/[*_#]/g, '').trim();
-        
-        // Chia nhỏ thành các segment theo dấu câu để mượt hơn
         const segments = viPart.split(/([.!?])/).reduce((acc: string[], cur, i, arr) => {
             if (i % 2 === 0) {
                 const combined = (cur + (arr[i+1] || "")).trim();
@@ -124,7 +129,6 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
                     const audio = new Audio(url);
                     audio.playbackRate = speechRate;
                     currentAudioRef.current = audio;
-                    
                     audio.onended = () => resolve();
                     audio.onerror = () => reject();
                     audio.play().catch(reject);
@@ -137,7 +141,7 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
         }
     }, [speechRate]);
 
-    // --- Speech Recognition (SMART AUTO-SEND) ---
+    // --- Speech Recognition ---
     useEffect(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -147,7 +151,6 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
             recognition.lang = 'vi-VN';
             
             recognition.onstart = () => setIsRecording(true);
-            
             recognition.onresult = (e: any) => {
                 const transcript = Array.from(e.results)
                     .map((res: any) => res[0].transcript)
@@ -161,9 +164,8 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
                         const cleanText = await punctuateText(transcript.trim());
                         handleSendMessage(cleanText);
                     }
-                }, 2000); // 2 giây im lặng sẽ gửi
+                }, 2000);
             };
-
             recognition.onend = () => setIsRecording(false);
             recognitionRef.current = recognition;
         }
@@ -171,12 +173,22 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
 
     const handleSendMessage = async (text: string) => {
         if (!text.trim() || isProcessingRef.current) return;
+        
+        // Kiểm tra Credit từ Props
+        if (credit !== undefined && credit <= 0) {
+            if (setIsCreditModalOpen) setIsCreditModalOpen(true);
+            return;
+        }
+
         isProcessingRef.current = true;
         setIsThinking(true);
 
         const userMsgId = `user-${Date.now()}`;
         setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null }]);
         setUserInput("");
+
+        // Trừ Credit
+        if (setCredit) setCredit((prev: number) => Math.max(0, prev - 1));
 
         try {
             const chatHistory = messages.map(m => ({
@@ -185,7 +197,7 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
             }));
 
             const response = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.5-flash',
                 contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
                 config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
             });
@@ -242,7 +254,7 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
         return (
             <div className="w-full h-full bg-violet-50 flex items-center justify-center p-4">
                 <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[12px] border-violet-100">
-                    <img src={character.avatarUrl} className="w-40 h-40 mx-auto mb-6 rounded-3xl border-4 border-violet-400 object-cover shadow-lg" />
+                    <img src={character?.avatarUrl} className="w-40 h-40 mx-auto mb-6 rounded-3xl border-4 border-violet-400 object-cover shadow-lg" />
                     <h1 className="text-3xl font-black text-violet-700 mb-2 uppercase italic">Phương's Market 🥦</h1>
                     <p className="text-slate-400 mb-8 font-medium italic">{t.ui_welcome}</p>
                     <div className="flex flex-col gap-6 items-center">
@@ -262,11 +274,11 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
     }
 
     return (
-        <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex flex-col md:flex-row overflow-hidden md:p-4">
+        <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex flex-col md:flex-row overflow-hidden">
             <div className="h-[20vh] md:h-full md:w-1/3 bg-[#F7F8FA] p-4 flex flex-row md:flex-col items-center justify-between border-r border-slate-100 shrink-0 z-20">
                 <div className="flex flex-row md:flex-col items-center gap-4">
                     <div className="w-20 h-20 md:w-52 md:h-52 rounded-3xl overflow-hidden border-4 border-white shadow-xl">
-                        <img src={character.avatarUrl} className="w-full h-full object-cover" />
+                        <img src={character?.avatarUrl} className="w-full h-full object-cover" />
                     </div>
                     <div className="text-left md:text-center">
                         <h2 className="text-xl font-black text-slate-800 italic">Phương 🥦</h2>
@@ -283,6 +295,7 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
                 <div className="px-6 py-4 border-b flex justify-between items-center bg-white shadow-sm z-10">
                     <span className="font-black text-violet-600 text-xs uppercase tracking-widest">{t.ui_learning_title}</span>
                     <div className="flex gap-2">
+                        {credit !== undefined && <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-bold">CREDIT: {credit}</span>}
                         <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1">
                             <Gauge size={12}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
                         </button>
@@ -324,4 +337,4 @@ export const GameVegetables: React.FC<{ character: any }> = ({ character }) => {
     );
 };
 
-export default GameVegetables;
+export default GameSpeakAIVegetables;
