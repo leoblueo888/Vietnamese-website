@@ -71,7 +71,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
   const t = LANGUAGES[selectedLang];
 
-  // --- RECOGNITION (GIỮ NGUYÊN BẢN GỐC) ---
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -109,14 +109,16 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     });
   };
 
-  // --- AI ENGINE (CHỈ THAY ĐỔI CÁCH GỌI KEY) ---
+  // --- AI ENGINE (Cập nhật Mục 3: Xử lý USER_TRANSLATION) ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
 
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId }]);
+    // Tạo tin nhắn user tạm thời
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
 
     try {
@@ -125,22 +127,37 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         parts: [{ text: m.text.split('|')[0] }]
       }));
 
-      // THAY THẾ FETCH BẰNG generateContentWithRetry
       const response = await generateContentWithRetry({
         model: 'gemini-2.5-flash',
         contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
         config: {
-          systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
-          Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
-          Sell: Xoài Cam Lâm, Sầu riêng. 
-          Format: Vietnamese | ${t.systemPromptLang} Translation.`
+          systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
+          Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
+          Sell: Xoài Cam Lâm, Sầu riêng. 
+          Format: Vietnamese | ${t.systemPromptLang} Translation | USER_TRANSLATION: [Translation of what user just said]`
         }
       });
 
       if (response.text) {
+        const rawAiResponse = response.text;
+        
+        // Bóc tách USER_TRANSLATION (Mục 3)
+        const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*(.*)$/i);
+        const userTranslationValue = userTransMatch ? userTransMatch[1].replace(/[\[\]]/g, '').trim() : "";
+        
+        // Làm sạch text của AI (loại bỏ phần USER_TRANSLATION để hiển thị)
+        const aiCleanText = rawAiResponse.split(/USER_TRANSLATION:/i)[0].trim();
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(prev => [...prev, { role: 'ai', text: response.text, id: aiMsgId }]);
-        await speak(response.text, aiMsgId);
+
+        setMessages(currentMsgs => {
+          const updated = [...currentMsgs];
+          const userIdx = updated.findIndex(m => m.id === userMsgId);
+          if (userIdx !== -1) updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
+          updated.push({ role: 'ai', text: aiCleanText, id: aiMsgId });
+          return updated;
+        });
+
+        await speak(aiCleanText, aiMsgId);
       }
     } catch (e) {
       console.error(e);
@@ -150,7 +167,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     }
   };
 
-  // --- INTERACTIVE RENDER (GIỮ NGUYÊN BẢN GỐC) ---
+  // --- INTERACTIVE RENDER ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -253,20 +270,29 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
             </div>
           </header>
 
+          {/* Chat Messages (Cập nhật Mục 2: Logic hiển thị tách chuỗi) */}
           <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 bg-emerald-50/10 custom-scrollbar">
             {messages.map((msg) => {
               const parts = msg.text.split('|');
+              const mainText = parts[0]?.trim();
+              const aiSubText = parts[1]?.trim();
+              const userSubText = msg.translation; // Mục 3
               const isActive = activeVoiceId === msg.id;
+
               return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-5 md:p-6 rounded-[2rem] transition-all shadow-sm ${isActive ? 'ring-2 ring-emerald-400' : ''} ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-emerald-100'}`}>
                     <div className="flex items-start justify-between gap-4">
-                      <div className="text-base md:text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.text}</div>
-                      <button onClick={() => speak(msg.text, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
+                      <div className="text-base md:text-lg font-bold leading-relaxed">
+                        {msg.role === 'ai' ? renderInteractiveText(mainText) : mainText}
+                      </div>
+                      <button onClick={() => speak(mainText, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
                     </div>
-                    {parts[1] && (
+                    
+                    {/* Hiển thị bản dịch (Mục 2 cho AI và Mục 3 cho User) */}
+                    {(aiSubText || userSubText) && (
                       <div className={`mt-3 pt-3 border-t text-[11px] italic font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>
-                        {parts[1]}
+                        {msg.role === 'ai' ? aiSubText : userSubText}
                       </div>
                     )}
                   </div>
