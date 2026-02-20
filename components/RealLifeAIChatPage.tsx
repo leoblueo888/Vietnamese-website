@@ -11,6 +11,7 @@ import { GameSpeakAIRestaurant } from '../games/GameSpeakAIRestaurant';
 import { HanhAIfruitseller } from '../games/HanhAIfruitseller';
 import { GameSpeakAIMeatSeafood } from '../games/GameSpeakAIMeatSeafood';
 import { GameSpeakAISmoothie } from '../games/GameSpeakAISmoothie';
+import { GameSpeakAIVegetables } from '../games/GameSpeakAIVegetables';
 
 interface RealLifeAIChatPageProps {
   unit: SpeakingUnit;
