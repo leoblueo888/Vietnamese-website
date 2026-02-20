@@ -150,7 +150,7 @@ export const Chatbot: React.FC = () => {
             const targetLang = currentLang === 'ru' ? 'Russian' : 'English';
 
             const payload = {
-                model: "gemini-3-flash-preview",
+                model: "gemini-2.5-flash",
                 config: {
                     systemInstruction: `You are Trang, AI assistant for 'Truly Easy Vietnamese'. Answer ONLY in ${targetLang}. Keep it concise (max 3 sentences). Knowledge: ${knowledgeBaseRef.current || "Standard info"}`
                 },
