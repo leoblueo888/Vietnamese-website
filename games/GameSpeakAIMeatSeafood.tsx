@@ -121,7 +121,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     if (fromMic) {
       try {
         const response = await generateContentWithRetry({
-          model: 'gemini-1.5-flash',
+          model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: `Sửa lỗi chính tả và làm cho câu sau tự nhiên hơn: "${processedInput}"` }] }],
           config: { systemInstruction: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không nói thêm gì khác." }
         });
@@ -136,7 +136,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
 
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: [...messages, newUserMsg].map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: m.text.split('|')[0].trim() }]
