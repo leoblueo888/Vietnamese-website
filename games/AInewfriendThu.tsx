@@ -21,7 +21,7 @@ const DICTIONARY = {
   "bạn bè": { EN: "friends", RU: "друзья" },
   "gia đình": { EN: "family", RU: "семья" },
   "bố mẹ": { EN: "parents", RU: "родители" },
-  "ông bà": { EN: "grandparents", RU: "бабушка и дедушка" },
+  "ông bà": { EN: "grandparents", RU: "бабушка và дедушка" },
   "sức khỏe": { EN: "health", RU: "здоровье" },
   "công việc": { EN: "job / work", RU: "работа" },
   "cuộc sống": { EN: "life", RU: "жизнь" },
@@ -176,7 +176,7 @@ const punctuateText = async (rawText: string) => {
   if (!rawText.trim()) return rawText;
   try {
     const response = await generateContentWithRetry({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }],
       config: { systemInstruction: "You are a helpful assistant that punctuates Vietnamese text." }
     });
@@ -186,7 +186,7 @@ const punctuateText = async (rawText: string) => {
   }
 };
 
-export const GameThu: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
+export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
   const [gameState, setGameState] = useState('start'); 
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN'); 
   const [messages, setMessages] = useState<any[]>([]);
@@ -245,14 +245,13 @@ export const GameThu: React.FC<{ onBack?: () => void, topic?: string | null }> =
     const userMsgId = `user-${Date.now()}`;
     const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null, displayedText: text.trim() };
     
-    // Tạo history mới ngay lập tức để gửi cho Gemini
     const updatedHistory = [...messages, newUserMsg];
     setMessages(updatedHistory);
     setUserInput("");
 
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             contents: updatedHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
@@ -289,7 +288,6 @@ export const GameThu: React.FC<{ onBack?: () => void, topic?: string | null }> =
     }
   }, [messages, t.systemPromptLang, topic, speakWord]);
 
-  // Ref để phần nhận diện giọng nói luôn dùng được hàm handleSendMessage mới nhất
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => {
     handleSendMessageRef.current = handleSendMessage;
@@ -415,4 +413,4 @@ export const GameThu: React.FC<{ onBack?: () => void, topic?: string | null }> =
   );
 };
 
-export default GameThu;
+export default AInewfriendThu;
