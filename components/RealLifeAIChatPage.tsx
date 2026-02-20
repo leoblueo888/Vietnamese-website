@@ -1,16 +1,14 @@
 import React, {useEffect} from 'react';
 import { Language } from '../App';
 import { SpeakingUnit } from './SpeakingPage';
-// FIX: Đảm bảo import đúng từ types và constants
 import type { AIFriend } from '../types';
 
-// IMPORT các game từ thư mục /games - Đảm bảo tên file phải viết HOA đúng từng chữ
+// CHỈ IMPORT NHỮNG GAME ĐANG CÓ TRONG THƯ MỤC /GAMES
 import { AIfriendLan } from '../games/AIfriendLan';
 import { AInewfriendThu } from '../games/AInewfriendThu';
 import { AInewfriendMai } from '../games/AInewfriendMai';
 import { GameSpeakAIRestaurant } from '../games/GameSpeakAIRestaurant';
 import { HanhAIfruitseller } from '../games/HanhAIfruitseller';
-import { GameSpeakAIVegetables } from '../games/GameSpeakAIVegetables';
 import { GameSpeakAIMeatSeafood } from '../games/GameSpeakAIMeatSeafood';
 import { GameSpeakAISmoothie } from '../games/GameSpeakAISmoothie';
 
@@ -29,50 +27,28 @@ export const RealLifeAIChatPage: React.FC<RealLifeAIChatPageProps> = ({ unit, ch
     ru: { speaking: 'Разговор', rls: 'Реальные ситуации', aiChat: `Разговор с ИИ-продавцом` }
   }[language];
 
-  // Logic trừ credit theo thời gian (giữ nguyên của bạn)
   useEffect(() => {
     const startTime = performance.now();
     return () => {
       const durationInSeconds = Math.round((performance.now() - startTime) / 1000);
       if (durationInSeconds > 1 && credit > 0) {
-          setCredit(prevCredit => Math.max(0, prevCredit - durationInSeconds));
+        setCredit(prevCredit => Math.max(0, prevCredit - durationInSeconds));
       }
     };
   }, [setCredit, credit]);
 
   const renderAIChat = () => {
-    // 1. Game Nước ép (Smoothie)
-    if (unit.id === 'buySmoothie' || character.name === 'Xuân') {
-      return <GameSpeakAISmoothie character={character} />;
-    }
+    if (unit.id === 'buySmoothie' && character.name === 'Xuân') return <GameSpeakAISmoothie character={character} />;
+    if (unit.id === 'buyFruits' && character.name === 'Hạnh') return <HanhAIfruitseller character={character} />;
+    // ĐÃ XÓA DÒNG GAME VEGETABLES Ở ĐÂY
+    if (unit.id === 'buyMeat' && character.name === 'Thanh') return <GameSpeakAIMeatSeafood character={character} />;
+    if (unit.id === 'atRestaurant' && character.name === 'Linh') return <GameSpeakAIRestaurant character={character} />;
 
-    // 2. Game Hoa quả (Hạnh)
-    if (unit.id === 'buyFruits' || character.name === 'Hạnh') {
-      return <HanhAIfruitseller character={character} />;
-    }
-    
-    // 3. Game Rau củ (Phương)
-    if (unit.id === 'buyVeggies' || character.name === 'Phương') {
-      return <GameSpeakAIVegetables character={character} />;
-    }
-
-    // 4. Game Thịt & Hải sản (Thanh)
-    if (unit.id === 'buyMeat' || character.name === 'Thanh') {
-      return <GameSpeakAIMeatSeafood character={character} />;
-    }
-
-    // 5. Game Nhà hàng (Linh)
-    if (unit.id === 'atRestaurant' || character.name === 'Linh') {
-      return <GameSpeakAIRestaurant character={character} />;
-    }
-
-    // Các nhân vật khác
     switch(character.name) {
       case 'Lan': return <AIfriendLan onBack={onBack} />;
       case 'Thu': return <AInewfriendThu onBack={onBack} />;
       case 'Mai': return <AInewfriendMai onBack={onBack} />;
-      default: 
-        return <div className="p-10 text-center">AI Character game not configured for this lesson.</div>;
+      default: return <div className="p-10 text-center text-slate-500">Game đang được cập nhật...</div>;
     }
   };
 
@@ -84,9 +60,8 @@ export const RealLifeAIChatPage: React.FC<RealLifeAIChatPageProps> = ({ unit, ch
           <span className="text-slate-300">/</span>
           <span className="hover:text-[#1e5aa0] cursor-pointer" onClick={onBack}>{t.rls}</span>
           <span className="text-slate-300">/</span>
-          <span className="hover:text-[#1e5aa0] cursor-pointer font-black text-blue-600">{unit.title}</span>
+          <span className="text-slate-800">{unit.title}</span>
         </nav>
-        
         <div className="w-full max-w-5xl mx-auto aspect-[9/16] md:aspect-video relative overflow-hidden rounded-3xl shadow-2xl border border-slate-200 bg-slate-100">
           {renderAIChat()}
         </div>
