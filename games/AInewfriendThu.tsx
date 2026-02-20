@@ -186,7 +186,7 @@ const punctuateText = async (rawText: string) => {
   }
 };
 
-export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
+export const GameThu: React.FC<{ onBack?: () => void, topic?: string | null }> = ({ onBack, topic }) => {
   const [gameState, setGameState] = useState('start'); 
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN'); 
   const [messages, setMessages] = useState<any[]>([]);
@@ -245,14 +245,15 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     const userMsgId = `user-${Date.now()}`;
     const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null, displayedText: text.trim() };
     
-    setMessages(prev => [...prev, newUserMsg]);
+    // Tạo history mới ngay lập tức để gửi cho Gemini
+    const updatedHistory = [...messages, newUserMsg];
+    setMessages(updatedHistory);
     setUserInput("");
 
     try {
-        // ĐỒNG BỘ CẤU TRÚC CONFIG VỚI GAME LAN
         const response = await generateContentWithRetry({
             model: 'gemini-3-flash-preview',
-            contents: [...messages, newUserMsg].map(m => ({
+            contents: updatedHistory.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
@@ -288,6 +289,12 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     }
   }, [messages, t.systemPromptLang, topic, speakWord]);
 
+  // Ref để phần nhận diện giọng nói luôn dùng được hàm handleSendMessage mới nhất
+  const handleSendMessageRef = useRef(handleSendMessage);
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -304,14 +311,14 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           if (currentTranscript.trim() && !isProcessingRef.current) {
             recognition.stop();
             const punctuated = await punctuateText(currentTranscript.trim());
-            handleSendMessage(punctuated);
+            handleSendMessageRef.current(punctuated);
           }
         }, 2500);
       };
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [handleSendMessage]);
+  }, []);
 
   useEffect(() => {
     if (activeVoiceId && messageRefs.current[activeVoiceId]) {
@@ -328,7 +335,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-emerald-500 shadow-md">
             <img src={THU_IMAGE_URL} alt="Thu" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic uppercase">Thu: New Friend</h1>
+          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic uppercase tracking-tighter">Thu: New Friend 🏛️</h1>
           <p className="text-slate-500 mb-8 italic">"Dạ, Thu chào bạn. Thu rất vui được làm bạn với bạn."</p>
           <div className="space-y-6">
             <div className="flex justify-center space-x-3">
@@ -408,4 +415,4 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   );
 };
 
-export default AInewfriendThu;
+export default GameThu;
