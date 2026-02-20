@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Maximize, Minimize, Globe, Gauge } from 'lucide-react';
+// Import đúng hàm xoay vòng key
 import { generateContentWithRetry } from '../config/apiKeys';
 
 // --- DICTIONARY DATA ---
@@ -46,8 +47,9 @@ const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-3-flash-preview',
-            contents: [{ role: 'user', parts: [{ text: `Thêm dấu câu và viết hoa đúng cho đoạn hội thoại mua bán trái cây sau (chỉ trả về kết quả): "${rawText}"` }] }]
+            model: 'gemini-2.0-flash', // Đảm bảo model đồng bộ với config
+            contents: [{ role: 'user', parts: [{ text: `Thêm dấu câu và viết hoa đúng cho đoạn hội thoại mua bán trái cây sau (chỉ trả về kết quả): "${rawText}"` }] }],
+            config: { systemInstruction: "Bạn là trợ lý sửa lỗi chính tả tiếng Việt." }
         });
         return response.text?.trim() || rawText;
     } catch (error) { return rawText; }
@@ -63,7 +65,8 @@ STRICT RULE 4: Focus on: local specialties (Xoài Cam Lâm, Sầu riêng), price
 FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]`;
 };
 
-export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
+// Đổi tên component thành HanhAIfruitseller để khớp với lệnh import bị lỗi
+export const HanhAIfruitseller: React.FC<{ character: any }> = ({ character }) => {
     const [gameState, setGameState] = useState<'start' | 'playing'>('start');
     const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
     const [messages, setMessages] = useState<any[]>([]);
@@ -83,7 +86,6 @@ export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
 
     const t = LANGUAGES[selectedLang];
 
-    // --- FULLSCREEN LOGIC ---
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
             gameContainerRef.current?.requestFullscreen();
@@ -94,7 +96,6 @@ export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
         }
     };
 
-    // --- TTS LOGIC: Chống nạp chồng và chia đoạn ---
     const speak = useCallback(async (text: string, msgId: string | null = null) => {
         if (!text) return;
         if (msgId) setActiveVoiceId(msgId);
@@ -130,7 +131,6 @@ export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
         }
     }, [speechRate]);
 
-    // --- SMART RECOGNITION: Tự động gửi sau im lặng 2s ---
     useEffect(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -173,8 +173,9 @@ export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
                 parts: [{ text: m.text.split('|')[0].trim() }]
             }));
 
+            // Gọi hàm từ config đúng cấu trúc
             const response = await generateContentWithRetry({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.0-flash',
                 contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
                 config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
             });
@@ -309,8 +310,13 @@ export const GameFruit: React.FC<{ character: any }> = ({ character }) => {
                     </footer>
                 </div>
             </div>
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b98122; border-radius: 10px; }
+            `}</style>
         </div>
     );
 };
 
-export default GameFruit;
+// Luôn export default đúng tên component để tránh lỗi import
+export default HanhAIfruitseller;
