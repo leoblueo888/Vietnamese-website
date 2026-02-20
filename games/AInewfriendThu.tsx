@@ -8,7 +8,7 @@ const DICTIONARY = {
   "hồ chí minh": { EN: "Ho Chi Minh City", RU: "Хошимин" },
   "đà nẵng": { EN: "Da Nang City", RU: "Дананг" },
   "vịnh hạ long": { EN: "Ha Long Bay", RU: "Бухта Халонг" },
-  "hồ hoàn kiếm": { EN: "Hoan Kiem Lake", RU: "Озеро Возвращенного Меча" },
+  "hồ hoàn kiếm": { EN: "Hoan Kiem Lake", RU: "Озеро Возвращенного Mechа" },
   "văn miếu": { EN: "Temple of Literature", RU: "Храм Литературы" },
   "phố cổ": { EN: "Old Quarter", RU: "Старый квартал" },
   "chùa một cột": { EN: "One Pillar Pagoda", RU: "Пагода на одном столбе" },
@@ -128,7 +128,7 @@ const getTranslations = (topic?: string | null) => {
         ui_listen_all: "Слушать всё",
         ui_download: "Скачать",
         ui_clear: "Очистить",
-        welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được gặp ${userPronoun} hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸 | Здравствуйте ${userName}, я Тху. Я очень рада встрече с вами сегодня. Надеюсь, у нас будут интересные беседы! 🌸`,
+        welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được gặp ${userPronoun} hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸 | Здравствуйте ${userName}, я Тху. Я rất vui được gặp bạn hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸`,
         systemPromptLang: "Russian"
       }
     };
@@ -181,7 +181,6 @@ const punctuateText = async (rawText: string) => {
     });
     return response.text?.trim() || rawText;
   } catch (error) {
-    console.error("Lỗi khi thêm dấu câu:", error);
     return rawText;
   }
 };
@@ -201,33 +200,59 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const THU_IMAGE_URL = "https://drive.google.com/thumbnail?id=1v6W4uH8X_K2K0G_W9Z0m_G_xX_xX_xX&sz=w800";
   const t = getTranslations(topic)[selectedLang];
-  
-  const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
+
+  const speakWord = useCallback(async (text: string, msgId: string | null = null) => {
+    if (!text) return;
+    if (msgId) setActiveVoiceId(msgId);
+    if (currentAudioRef.current) currentAudioRef.current.pause();
+
+    const viPart = text.split('|')[0].trim().replace(/[*#]/g, '');
+    const segments = viPart.split(/([.!?])\s/).reduce((acc: string[], cur, i, arr) => {
+        if (i % 2 === 0) {
+            const combined = (cur + (arr[i+1] || "")).trim();
+            if (combined) acc.push(combined);
+        }
+        return acc;
+    }, []);
+
+    try {
+        for (const segment of segments) {
+            await new Promise<void>((resolve) => {
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
+                const audio = new Audio(url);
+                audio.playbackRate = playbackSpeed;
+                currentAudioRef.current = audio;
+                audio.onended = () => resolve();
+                audio.onerror = () => resolve();
+                audio.play().catch(() => resolve());
+            });
+        }
+    } finally {
+        setActiveVoiceId(null);
+    }
+  }, [playbackSpeed]);
+
+  const handleSendMessage = useCallback(async (text: string) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
-    let processedInput = text.trim();
     
     const userMsgId = `user-${Date.now()}`;
-    const newUserMsg = { role: 'user', text: processedInput, displayedText: text.trim(), translation: null, id: userMsgId };
-
-    const currentHistory = [...messages, newUserMsg];
-    setMessages(currentHistory);
+    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null, displayedText: text.trim() }]);
     setUserInput("");
-    
+
     try {
         const response = await generateContentWithRetry({
             model: 'gemini-3-flash-preview',
-            contents: currentHistory.map(m => ({
+            contents: [...messages, { role: 'user', text: text.trim() }].map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
-            config: { 
-                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
-            }
+            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
         });
         
         const rawAiResponse = response.text || "";
@@ -236,9 +261,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
         const aiTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
         const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
-        const cleanDisplay = `${aiVi} | ${aiTrans}`;
         const aiMsgId = `ai-${Date.now()}`;
-        const newAiMsg = { role: 'ai', text: cleanDisplay, id: aiMsgId, displayedText: cleanDisplay };
 
         setMessages(prev => {
             const updated = [...prev];
@@ -246,21 +269,18 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
             if (userIdx > -1 && userTranslationValue) {
                 updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
             }
-            return [...updated, newAiMsg];
+            return [...updated, { role: 'ai', text: `${aiVi} | ${aiTrans}`, id: aiMsgId }];
         });
 
-        speakWord(cleanDisplay, aiMsgId);
+        speakWord(`${aiVi} | ${aiTrans}`, aiMsgId);
 
-    } catch (error: any) {
-        console.error("Gemini Error:", error);
+    } catch (error) {
+        console.error("Thu Gemini Error:", error);
     } finally {
         setIsThinking(false);
         isProcessingRef.current = false;
     }
-  }, [messages, selectedLang, topic, t.systemPromptLang]);
-  
-  const handleSendMessageRef = useRef(handleSendMessage);
-  useEffect(() => { handleSendMessageRef.current = handleSendMessage; });
+  }, [messages, t.systemPromptLang, topic, speakWord]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -269,32 +289,23 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-      
-      recognition.onstart = () => {
-        setIsRecording(true);
-        isProcessingRef.current = false;
-        setUserInput("");
-      };
-
+      recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (event: any) => {
-        if (isProcessingRef.current) return;
         const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
         setUserInput(currentTranscript);
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(async () => {
-            const textToProcess = currentTranscript.trim();
-            if (textToProcess && !isProcessingRef.current) {
-                recognition.stop();
-                const punctuated = await punctuateText(textToProcess);
-                handleSendMessageRef.current(punctuated, true);
-            }
+          if (currentTranscript.trim() && !isProcessingRef.current) {
+            recognition.stop();
+            const punctuated = await punctuateText(currentTranscript.trim());
+            handleSendMessage(punctuated);
+          }
         }, 2500);
       };
-      recognition.onerror = (event: any) => setIsRecording(false);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [selectedLang]);
+  }, [handleSendMessage]);
 
   useEffect(() => {
     if (activeVoiceId && messageRefs.current[activeVoiceId]) {
@@ -304,53 +315,6 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     }
   }, [messages, activeVoiceId]);
 
-  // CÁCH LẤY THÔNG MINH - ĐÃ SỬA CHO VERCEL
-  const speakWord = (text: string, msgId: any = null) => {
-    if (!text) return;
-    const cleanText = text.split('|')[0].trim();
-    if (msgId) setActiveVoiceId(msgId);
-
-    // Tạo URL lấy trực tiếp từ Engine Google TTS
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-    
-    // KHỞI TẠO MỚI HOÀN TOÀN: Giống game Job/Buy Meat để tránh lỗi trên Vercel
-    const audio = new Audio(url);
-    audio.playbackRate = playbackSpeed;
-    
-    audio.play().catch(e => {
-        console.warn("Trình duyệt chặn Autoplay, cần tương tác người dùng.");
-    });
-
-    audio.onended = () => {
-        if (msgId) setActiveVoiceId(null);
-    };
-  };
-  
-  const cycleSpeed = () => {
-    setPlaybackSpeed(prev => {
-        if (prev >= 1.2) return 0.8;
-        return parseFloat((prev + 0.2).toFixed(1));
-    });
-  };
-
-  const handleStartGame = () => {
-    setMessages([{ role: 'ai', text: t.welcome_msg, displayedText: t.welcome_msg, id: 'init' }]);
-    setGameState('playing');
-    // Nói ngay khi bấm nút Start để kích hoạt quyền audio
-    speakWord(t.welcome_msg, 'init');
-  };
-  
-  const toggleRecording = () => {
-    if (!recognitionRef.current) return;
-    if (isRecording) {
-      recognitionRef.current.stop();
-    } else {
-      setUserInput(""); 
-      isProcessingRef.current = false;
-      recognitionRef.current.start();
-    }
-  };
-
   if (gameState === 'start') {
     return (
       <div className="w-full h-full bg-white flex items-center justify-center p-6">
@@ -358,17 +322,18 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-emerald-500 shadow-md">
             <img src={THU_IMAGE_URL} alt="Thu" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic">Thu: New Friend</h1>
-          <p className="text-slate-500 mb-8 italic">"Dạ, Thu chào anh. Thu rất vui được làm bạn với anh."</p>
+          <h1 className="text-3xl font-black text-emerald-800 mb-2 italic uppercase">Thu: New Friend</h1>
+          <p className="text-slate-500 mb-8 italic">"Dạ, Thu chào bạn. Thu rất vui được làm bạn với bạn."</p>
           <div className="space-y-6">
             <div className="flex justify-center space-x-3">
               {(['EN', 'RU'] as const).map(lang => (
                 <button key={lang} onClick={() => setSelectedLang(lang)} className={`px-5 py-2 rounded-xl font-bold border-2 transition-all ${selectedLang === lang ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-100 text-slate-400'}`}>
-                  {getTranslations(topic)[lang as 'EN' | 'RU'].label}
+                  {getTranslations(topic)[lang].label}
                 </button>
               ))}
             </div>
-            <button onClick={handleStartGame} className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-black text-xl shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center space-x-2">
+            <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speakWord(t.welcome_msg, 'init'); }} 
+                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-black text-xl shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center space-x-2">
               <Play size={20} fill="white" /> <span>{t.ui_start}</span>
             </button>
           </div>
@@ -393,7 +358,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
             <div className="mt-2 text-[9px] text-emerald-800 opacity-70">Online • Hanoi Capital</div>
           </div>
           <div className="flex flex-col items-center">
-            <button onClick={toggleRecording} className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 ${isRecording ? 'bg-emerald-500 ring-4 md:ring-8 ring-emerald-100 animate-pulse' : 'bg-emerald-600 shadow-emerald-200'}`}>
+            <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 ${isRecording ? 'bg-emerald-500 ring-4 md:ring-8 ring-emerald-100 animate-pulse' : 'bg-emerald-600 shadow-emerald-200'}`}>
               {isRecording ? <MicOff size={24} className="md:w-[28px] md:h-[28px]" color="white" /> : <Mic size={24} className="md:w-[28px] md:h-[28px]" color="white" />}
             </button>
             <p className="mt-1 font-black text-emerald-800 text-[9px] md:text-[9px] uppercase tracking-tighter opacity-60 text-center w-24 md:w-24 leading-tight">{isRecording ? t.ui_listening : t.ui_tapToTalk}</p>
@@ -404,7 +369,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
           <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
             <div className="flex items-center gap-3">
               <span className="text-[9px] font-black text-emerald-700 uppercase flex items-center gap-1"><Globe size={10}/> {t.label}</span>
-              <button onClick={cycleSpeed} className="px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full flex items-center gap-1.5 text-[10px] font-black text-emerald-700 hover:bg-emerald-100 transition-colors"><Gauge size={12} /> <span>{Math.round(playbackSpeed * 100)}%</span></button>
+              <button onClick={() => setPlaybackSpeed(prev => prev === 1.0 ? 0.75 : 1.0)} className="px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full flex items-center gap-1.5 text-[10px] font-black text-emerald-700 hover:bg-emerald-100 transition-colors"><Gauge size={12} /> <span>{playbackSpeed === 1.0 ? '100%' : '75%'}</span></button>
             </div>
             <div className="flex items-center space-x-1 md:space-x-2">
               <button onClick={() => setMessages([])} className="p-2 text-[10px] font-black text-slate-400 uppercase hover:text-red-500">{t.ui_clear}</button>
@@ -427,7 +392,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
             })}
             <div ref={chatEndRef} />
           </div>
-          <div className="p-3 md:p-4 border-t border-slate-50 flex gap-2 bg-white">
+          <div className="p-3 md:p-4 border-t border-slate-50 flex gap-2 bg-white pb-8">
             <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={isRecording ? "Đang lắng nghe..." : t.ui_placeholder} className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium outline-none ${isRecording ? 'bg-emerald-50 border-emerald-200 animate-pulse' : 'bg-slate-50 border-transparent focus:border-emerald-100'}`} />
             <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-emerald-700 text-white p-3 md:px-6 rounded-xl hover:bg-emerald-800 shadow-lg shadow-emerald-100 transition-all flex items-center justify-center disabled:opacity-50"><Send size={18} /></button>
           </div>
