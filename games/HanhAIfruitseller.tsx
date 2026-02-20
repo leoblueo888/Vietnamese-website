@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Maximize, Minimize, Globe, Gauge } from 'lucide-react';
+// IMPORT hệ thống key mới
+import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
 // --- DICTIONARY DATA (BẢN CHUẨN) ---
@@ -44,13 +46,12 @@ const LANGUAGES = {
     ui_start: "КУПИТЬ",
     ui_placeholder: "Поговори с Хань здесь...",
     ui_status: "В сети - Эксперт",
-    ui_learning_title: "Общение на рынке",
+    ui_learning_title: "Общение trên thị trường",
     welcome_msg: "Dạ, em chào Anh! Mời Anh xem hoa quả ạ. Anh muốn mua trái gì ạ? ✨ | Здравствуйте! Những trái cây này ngon lắm. Bạn muốn mua gì? ✨",
     systemPromptLang: "Russian"
   }
 };
 
-// ĐÃ ĐỔI TÊN THÀNH HanhAIfruitseller ĐỂ KHỚP VỚI LỆNH IMPORT
 export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character }) => {
   const [gameState, setGameState] = useState<'start' | 'playing'>('start');
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN');
@@ -70,7 +71,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
   const t = LANGUAGES[selectedLang];
 
-  // --- RECOGNITION (BẢN CHUẨN) ---
+  // --- RECOGNITION (GIỮ NGUYÊN BẢN GỐC) ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -108,7 +109,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     });
   };
 
-  // --- AI PROXY ---
+  // --- AI ENGINE (CHỈ THAY ĐỔI CÁCH GỌI KEY) ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -119,27 +120,27 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     setUserInput("");
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: messages.map(m => ({
-            role: m.role === 'ai' ? 'model' : 'user',
-            parts: [{ text: m.text.split('|')[0] }]
-          })),
-          systemPrompt: `You are Hạnh (20 years old), a friendly fruit seller. 
+      const history = messages.map(m => ({
+        role: m.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: m.text.split('|')[0] }]
+      }));
+
+      // THAY THẾ FETCH BẰNG generateContentWithRetry
+      const response = await generateContentWithRetry({
+        model: 'gemini-1.5-flash',
+        contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
+        config: {
+          systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
           Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
           Sell: Xoài Cam Lâm, Sầu riêng. 
           Format: Vietnamese | ${t.systemPromptLang} Translation.`
-        })
+        }
       });
 
-      const data = await response.json();
-      if (data.text) {
+      if (response.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        setMessages(prev => [...prev, { role: 'ai', text: data.text, id: aiMsgId }]);
-        await speak(data.text, aiMsgId);
+        setMessages(prev => [...prev, { role: 'ai', text: response.text, id: aiMsgId }]);
+        await speak(response.text, aiMsgId);
       }
     } catch (e) {
       console.error(e);
@@ -149,7 +150,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     }
   };
 
-  // --- INTERACTIVE RENDER (BẢN CHUẨN) ---
+  // --- INTERACTIVE RENDER (GIỮ NGUYÊN BẢN GỐC) ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
