@@ -11,6 +11,8 @@ export const Chatbot: React.FC = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
 
+    // Dùng ref để lưu kiến thức, tránh việc fetch đi fetch lại nhiều lần gây chậm
+    const knowledgeBaseRef = useRef<string>("");
     const recognitionRef = useRef<any | null>(null);
     const chatBodyRef = useRef<HTMLDivElement>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -27,13 +29,27 @@ export const Chatbot: React.FC = () => {
         ru: {
             initialMessage: "Здравствуйте, добро пожаловать в Truly Easy Vietnamese. Чем могу помочь?",
             quickReplies: ['С чего начать?', 'Преподаватели', 'Мне нужна помощь'],
-            placeholder: "Напишите или нажмите микрофон",
+            placeholder: "Напишите hoặc нажмите микрофон",
             listening: "Слушаю...",
             assistantLabel: "Поговорить с ИИ-помощником"
         }
     };
 
-    // 1. THE CHỐT: Theo dõi sự thay đổi ngôn ngữ từ nút bấm trên Website
+    // 1. TẢI KIẾN THỨC SỚM: Tải ngay khi ứng dụng load để khi chat là có ngay dữ liệu
+    useEffect(() => {
+        const loadKnowledge = async () => {
+            try {
+                const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
+                const response = await fetch(docUrl);
+                knowledgeBaseRef.current = await response.text();
+            } catch (error) {
+                console.error("Lỗi tải kiến thức:", error);
+            }
+        };
+        loadKnowledge();
+    }, []);
+
+    // Theo dõi sự thay đổi ngôn ngữ từ Website
     useEffect(() => {
         const handleLangChange = () => {
             const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
@@ -42,11 +58,8 @@ export const Chatbot: React.FC = () => {
             }
         };
 
-        // Lắng nghe sự kiện từ localStorage và các Custom Event nếu có
         window.addEventListener('storage', handleLangChange);
         window.addEventListener('languageChanged', handleLangChange);
-        
-        // Kiểm tra định kỳ (Interval) đề phòng trường hợp các event không trigger
         const interval = setInterval(handleLangChange, 1000);
 
         return () => {
@@ -56,10 +69,9 @@ export const Chatbot: React.FC = () => {
         };
     }, [currentLang]);
 
-    // 2. THE CHỐT: Khi currentLang thay đổi, Reset toàn bộ tin nhắn về ngôn ngữ mới
+    // Khi currentLang thay đổi, Reset tin nhắn
     useEffect(() => {
         setMessages([{ text: translations[currentLang].initialMessage, isBot: true }]);
-        // Nếu chatbot đang mở thì đọc luôn câu chào mới
         if (isOpen) {
             speak(translations[currentLang].initialMessage);
         }
@@ -134,26 +146,15 @@ export const Chatbot: React.FC = () => {
         setIsLoadingAI(true);
 
         try {
-            const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
-            const docResponse = await fetch(docUrl);
-            const docText = await docResponse.text();
-
+            // Sử dụng dữ liệu đã cache trong Ref để trả lời ngay lập tức
             const targetLang = currentLang === 'ru' ? 'Russian' : 'English';
 
             const payload = {
                 model: "gemini-3-flash-preview",
                 config: {
-                    systemInstruction: `You are Trang, the official AI assistant for 'Truly Easy Vietnamese'.
-                    CONTEXT: This platform teaches Vietnamese to English and Russian speakers.
-                    KNOWLEDGE BASE: ${docText}
-                    STRICT RULES:
-                    1. Use ONLY the provided knowledge to answer.
-                    2. LANGUAGE: You MUST answer strictly in ${targetLang}. 
-                    3. If the user asks in another language, you must still reply in ${targetLang}.
-                    4. Keep it friendly, helpful, and concise (max 3 sentences).`
+                    systemInstruction: `You are Trang, AI assistant for 'Truly Easy Vietnamese'. Answer ONLY in ${targetLang}. Keep it concise (max 3 sentences). Knowledge: ${knowledgeBaseRef.current || "Standard info"}`
                 },
                 contents: [
-                    // Chỉ gửi tối đa 4 tin nhắn gần nhất để giữ ngữ cảnh đúng ngôn ngữ hiện tại
                     ...messages.slice(-4).map(m => ({
                         role: m.isBot ? 'model' : 'user',
                         parts: [{ text: m.text }]
@@ -168,7 +169,7 @@ export const Chatbot: React.FC = () => {
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
         } catch (error) {
             console.error("Chatbot AI Error:", error);
-            const errorMsg = currentLang === 'ru' ? "Ошибка связи. Попробуйте снова." : "Connection error. Please try again.";
+            const errorMsg = currentLang === 'ru' ? "Ошибка связи." : "Connection error.";
             setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
         } finally {
             setIsLoadingAI(false);
@@ -214,10 +215,7 @@ export const Chatbot: React.FC = () => {
                 .no-scrollbar::-webkit-scrollbar { display: none; }
             `}</style>
 
-            <button 
-                onClick={toggleChat} 
-                className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 group animate-float"
-            >
+            <button onClick={toggleChat} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 animate-float">
                 <span className="hidden md:inline-block bg-white/90 backdrop-blur-md font-bold text-[#1e5aa0] px-5 py-2 rounded-full shadow-lg border border-blue-100">
                     {translations[currentLang].assistantLabel}
                 </span>
@@ -226,11 +224,7 @@ export const Chatbot: React.FC = () => {
                 </div>
             </button>
 
-            <div 
-                className={`fixed bottom-24 right-6 w-[350px] h-[550px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${
-                    isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'
-                }`}
-            >
+            <div className={`fixed bottom-24 right-6 w-[350px] h-[550px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
                 <div className="p-4 bg-slate-50 rounded-t-2xl border-b flex flex-col items-center relative">
                     <img src="https://img.icons8.com/fluency/96/bot.png" className="w-16 h-16 mb-2" alt="Trang" />
                     <h3 className="font-bold text-slate-800">Trang Assistant</h3>
@@ -241,9 +235,7 @@ export const Chatbot: React.FC = () => {
                 <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white scroll-smooth">
                     {messages.map((msg, index) => (
                         <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${
-                                !msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'
-                            }`}>
+                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
                                 {msg.text}
                             </div>
                         </div>
@@ -258,29 +250,14 @@ export const Chatbot: React.FC = () => {
                 <div className="p-4 border-t bg-white rounded-b-2xl">
                     <div className="flex gap-2 mb-3 overflow-x-auto pb-2 no-scrollbar">
                         {translations[currentLang].quickReplies.map(text => (
-                            <button 
-                                key={text} 
-                                onClick={() => handleSendMessage(text)} 
-                                className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100 transition-colors"
-                            >
+                            <button key={text} onClick={() => handleSendMessage(text)} className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100 transition-colors">
                                 {text}
                             </button>
                         ))}
                     </div>
                     <div className="flex items-center gap-2">
-                        <input 
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
-                            className="flex-1 p-2 bg-slate-50 border rounded-xl outline-none text-sm focus:border-blue-400"
-                            placeholder={isRecording ? translations[currentLang].listening : translations[currentLang].placeholder}
-                        />
-                        <button 
-                            onClick={toggleRecording} 
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all ${
-                                isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#1e5aa0]'
-                            }`}
-                        >
+                        <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} className="flex-1 p-2 bg-slate-50 border rounded-xl outline-none text-sm focus:border-blue-400" placeholder={isRecording ? translations[currentLang].listening : translations[currentLang].placeholder} />
+                        <button onClick={toggleRecording} className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#1e5aa0]'}`}>
                             🎤
                         </button>
                     </div>
