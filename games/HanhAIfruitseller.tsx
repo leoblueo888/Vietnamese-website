@@ -127,7 +127,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
       // THAY THẾ FETCH BẰNG generateContentWithRetry
       const response = await generateContentWithRetry({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
         config: {
           systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
