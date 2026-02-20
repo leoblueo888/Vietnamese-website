@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Globe, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
-// IMPORT hệ thống key mới
+// IMPORT hệ thống key mới theo yêu cầu
 import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
@@ -43,20 +43,6 @@ const LANGUAGES = {
   }
 };
 
-// --- HÀM XỬ LÝ DẤU CÂU TỰ ĐỘNG (THÊM MỚI) ---
-const punctuateText = async (rawText: string) => {
-  if (!rawText.trim()) return rawText;
-  try {
-    const response = await generateContentWithRetry({
-      model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
-    });
-    return response.text?.trim() || rawText;
-  } catch (error) {
-    return rawText;
-  }
-};
-
 const getSystemPrompt = (targetLangName: string) => `
 You are Xuan, a 20-year-old beautiful barista.
 ROLE: You only sell drinks. Do not teach or explain grammar.
@@ -82,95 +68,54 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-  // CẢI TIẾN: Không dùng audio duy nhất nữa
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
-  const silenceTimerRef = useRef<any>(null);
 
   const t = LANGUAGES[selectedLang];
 
   // --- FULLSCREEN ---
+  useEffect(() => {
+    const handleFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFs);
+    return () => document.removeEventListener('fullscreenchange', handleFs);
+  }, []);
+
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      gameContainerRef.current?.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
+    if (!gameContainerRef.current) return;
+    if (!document.fullscreenElement) gameContainerRef.current.requestFullscreen();
+    else document.exitFullscreen();
   };
 
-  // --- RECOGNITION (CẢI TIẾN: TỰ ĐỘNG GỬI SAU 2S IM LẶNG) ---
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.continuous = false;
       recognition.lang = 'vi-VN';
-      
       recognition.onstart = () => setIsRecording(true);
-      
       recognition.onresult = (e: any) => {
-        const transcript = Array.from(e.results)
-          .map((res: any) => res[0].transcript)
-          .join('');
-        setUserInput(transcript);
-
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = setTimeout(async () => {
-          if (transcript.trim() && !isProcessingRef.current) {
-            recognition.stop();
-            const cleanText = await punctuateText(transcript.trim());
-            handleSendMessage(cleanText);
-          }
-        }, 2000);
+        const text = e.results[0][0].transcript;
+        handleSendMessage(text);
       };
-
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [selectedLang]);
+  }, []);
 
-  // --- TTS (CẢI TIẾN: DÙNG NEW AUDIO(URL) THÔNG MINH + CHIA SEGMENT) ---
-  const speak = useCallback(async (text: string, msgId: string | null = null) => {
+  // --- TTS ---
+  const speak = async (text: string, msgId: string | null = null) => {
+    if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].replace(/[*#]/g, '').trim();
-    if(!cleanText) return;
-
-    // Ngắt kết nối audio cũ nếu đang phát
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
-
-    // Chia văn bản thành các câu nhỏ để Google TTS không bị lỗi độ dài
-    const segments = cleanText.split(/([.!?])/).reduce((acc: string[], cur, i, arr) => {
-      if (i % 2 === 0) acc.push(cur + (arr[i+1] || ""));
-      return acc;
-    }, []).filter(s => s.trim().length > 0);
-
-    try {
-      for (const segment of segments) {
-        await new Promise<void>((resolve, reject) => {
-          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-          const audio = new Audio(url); // CÁCH LẤY THÔNG MINH
-          audio.playbackRate = speechRate;
-          currentAudioRef.current = audio;
-          
-          audio.onended = () => resolve();
-          audio.onerror = () => reject();
-          audio.play().catch(reject);
-        });
-      }
-    } catch (e) {
-      console.error("TTS Error:", e);
-    } finally {
-      setActiveVoiceId(null);
-    }
-  }, [speechRate]);
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+    audioRef.current.src = url;
+    audioRef.current.playbackRate = speechRate;
+    audioRef.current.play().catch(console.error);
+    audioRef.current.onended = () => setActiveVoiceId(null);
+  };
 
   // --- AI ENGINE ---
   const handleSendMessage = async (text: string) => {
@@ -179,7 +124,8 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
     setIsThinking(true);
 
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null }]);
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
 
     try {
@@ -188,8 +134,9 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
         parts: [{ text: m.text.split('|')[0].trim() }]
       }));
 
+      // CẬP NHẬT: Sử dụng generateContentWithRetry thay vì fetch trực tiếp
       const response = await generateContentWithRetry({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-1.5-flash',
         contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
         config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
       });
@@ -203,7 +150,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
 
       const aiMsgId = `ai-${Date.now()}`;
-      const cleanDisplay = `${aiVi} | ${aiTrans}`;
+      const cleanDisplay = `${aiVi} ${aiTrans ? '| ' + aiTrans : ''}`;
 
       setMessages(prev => {
         const updated = [...prev];
@@ -256,7 +203,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       <div className="w-full h-full bg-blue-50 flex items-center justify-center p-4">
         <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[10px] border-white">
           <img src={character.avatarUrl} className="w-44 h-44 mx-auto mb-6 rounded-full border-4 border-blue-400 object-cover shadow-lg" alt="Xuan" />
-          <h1 className="text-4xl font-black text-blue-600 mb-2 italic underline decoration-wavy decoration-yellow-400">Xuân Smoothie 🥤</h1>
+          <h1 className="text-4xl font-black text-blue-600 mb-2 italic underline decoration-wavy decoration-yellow-400">Xuân Smoothie </h1>
           <p className="text-slate-400 mb-10 font-medium italic">{t.ui_welcome}</p>
           <div className="flex gap-4 justify-center mb-10">
             {(['EN', 'RU'] as const).map(l => (
@@ -283,7 +230,7 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
               {isThinking && <div className="absolute inset-0 bg-blue-400/20 animate-pulse rounded-full" />}
             </div>
             <div className="text-left md:text-center">
-              <h2 className="text-xl md:text-3xl font-black text-slate-800 italic">Xuân🍓</h2>
+              <h2 className="text-xl md:text-3xl font-black text-slate-800 italic">Xuân</h2>
               <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">{t.ui_status}</span>
             </div>
           </div>
