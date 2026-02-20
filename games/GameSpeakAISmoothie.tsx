@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, Volume2, Play, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
-import { GoogleGenAI } from '@google/generative-ai';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Mic, MicOff, Send, Volume2, Play, Globe, Download, Volume1, Gauge, Maximize, Minimize } from 'lucide-react';
+// IMPORT hệ thống key mới theo yêu cầu
+import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
 // --- DATA & CONFIG ---
-const DICTIONARY = {
+const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "nước ép": { EN: "fruit juice", type: "Noun" },
   "sinh tố": { EN: "smoothie", type: "Noun" },
   "cà phê": { EN: "coffee", type: "Noun" },
@@ -13,27 +15,9 @@ const DICTIONARY = {
   "sữa": { EN: "milk", type: "Noun" },
   "trái cây": { EN: "fruit", type: "Noun" },
   "thực đơn": { EN: "menu", type: "Noun" },
-  "quán": { EN: "shop / cafe", type: "Noun" },
-  "tên": { EN: "name", type: "Noun" },
-  "sức khỏe": { EN: "health", type: "Noun" },
-  "vitamin": { EN: "vitamin", type: "Noun" },
-  "đề kháng": { EN: "resistance/immunity", type: "Noun" },
   "uống": { EN: "to drink", type: "Verb" },
-  "chọn": { EN: "to choose", type: "Verb" },
-  "pha": { EN: "to brew / to mix", type: "Verb" },
-  "chào": { EN: "to greet / hello", type: "Verb" },
-  "cảm ơn": { EN: "to thank", type: "Verb" },
-  "đợi": { EN: "to wait", type: "Verb" },
-  "thích": { EN: "to like", type: "Verb" },
-  "dùng": { EN: "to use / to consume", type: "Verb" },
-  "tư vấn": { EN: "to consult/advise", type: "Verb" },
   "ngon": { EN: "delicious", type: "Adj" },
-  "ngọt": { EN: "sweet", type: "Adj" },
   "mát": { EN: "cool / refreshing", type: "Adj" },
-  "đẹp": { EN: "beautiful", type: "Adj" },
-  "vui": { EN: "happy", type: "Adj" },
-  "nhiều": { EN: "many / much", type: "Adj" },
-  "ít": { EN: "few / little", type: "Adj" },
   "tươi": { EN: "fresh", type: "Adj" }
 };
 
@@ -43,62 +27,38 @@ const LANGUAGES = {
     ui_welcome: "Welcome to my juice bar! I'm Xuan.",
     ui_start: "ORDER NOW",
     ui_placeholder: "Talk to Xuan here...",
-    ui_recording: "LISTENING...",
-    ui_tapToTalk: "Tap to talk",
-    ui_listening: "Xuan is listening...",
     ui_status: "Online - Barista Mode",
     ui_learning_title: "Chat with Xuan Barista",
-    ui_listen_all: "Listen All",
-    ui_download: "Download",
-    ui_clear: "Clear",
-    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? Hôm nay nhà em có nhiều trái cây tươi ngon lắm! ✨ | Hi! Welcome. Would you like a juice or a smoothie today? We have many fresh fruits! ✨",
+    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? Hôm nay nhà em có nhiều trái cây tươi ngon lắm! ✨ | Hi! Welcome. Would you like a juice or a smoothie today? ✨",
     systemPromptLang: "English"
   },
   RU: {
     label: "Русский",
-    ui_welcome: "Добро пожаловать! Я Суан, ваш бариста.",
+    ui_welcome: "Добро пожаловать! Я Суан.",
     ui_start: "ЗАKAЗАТЬ",
-    ui_placeholder: "Поговори с Суан здесь...",
-    ui_recording: "СЛУШАЮ...",
-    ui_tapToTalk: "Нажмите, để nói",
-    ui_listening: "Суан слушает...",
+    ui_placeholder: "Поговори с Суан...",
     ui_status: "В сети - Бариста",
     ui_learning_title: "Общение với бариста",
-    ui_listen_all: "Nghe tất cả",
-    ui_download: "Tải xuống",
-    ui_clear: "Xóa",
-    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? ✨ | Здравствуйте! Какой сок или смузи вы бы хотели сегодня? ✨",
+    welcome_msg: "Dạ, em chào Anh! Anh muốn dùng nước ép hay sinh tố gì ạ? ✨ | Здравствуйте! Какой сок hoặc смузи вы бы хотели? ✨",
     systemPromptLang: "Russian"
   }
 };
 
 const getSystemPrompt = (targetLangName: string) => `
 You are Xuan, a 20-year-old beautiful barista.
-STRICT COMMUNICATION FLOW:
-1. When user names a drink: Ask if they want "ít đá" (little ice) or "nhiều đá" (much ice).
-2. After ice choice: Ask if they want to drink "tại đây" (here) or "mang đi" (to go).
-3. If they say "tại đây": Respond with "Mời anh ngồi, em sẽ mang đồ uống tới ngay." (Please have a seat, I'll bring your drink right away).
+ROLE: You only sell drinks. Do not teach or explain grammar.
+STRICT FLOW:
+1. When user orders: Ask "ít đá" or "nhiều đá".
+2. Then: Ask "tại đây" or "mang đi".
+3. If "tại đây": Say "Mời anh ngồi, em sẽ mang đồ uống tới ngay."
 
-STRICT TEXT FORMATTING:
-- DO NOT use any special characters like asterisks (*) or stars in your response.
-- Use only plain text and emojis.
-
-PRICE POLICY (STRICT):
-- All drinks are 30 nghìn.
-- NEVER mention the price "30 nghìn" or any money unless the user explicitly asks "Bao nhiêu tiền?", "Tính tiền", "Giá thế nào?", or "How much?". If they don't ask, stay silent about the cost.
-
-KNOWLEDGE BASE:
-- Skin/Beauty: Tomato, Strawberry, Carrot.
-- Immunity: Orange, Pineapple, Guava.
-- Digestion: Pineapple, Papaya, Apple.
-- Energy: Banana, Avocado, Coffee.
-
-PERSONALITY: Energetic, polite, sweet. Use "Anh" for user and "Em" for self. Use "Dạ", "ạ".
-Format: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]
+PRICE: All drinks are 30 nghìn. Only mention if asked.
+STRICT FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]
+No stars (*) or special markdown.
 `;
 
 export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ character }) => {
-  const [gameState, setGameState] = useState('start'); 
+  const [gameState, setGameState] = useState<'start' | 'playing'>('start'); 
   const [selectedLang, setSelectedLang] = useState<'EN' | 'RU'>('EN'); 
   const [messages, setMessages] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -106,394 +66,226 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
   const [userInput, setUserInput] = useState("");
   const [activeVoiceId, setActiveVoiceId] = useState<string | null>(null);
   const [speechRate, setSpeechRate] = useState(1.0);
-  
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
-  const silenceTimerRef = useRef<number | null>(null);
-  
-  // FIXED: Standard way to retrieve API Key in this environment
-  const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.API_KEY || ""); 
-
-  const XUAN_IMAGE_URL = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&auto=format&fit=crop&q=60";
-  
-  const t = LANGUAGES[selectedLang];
-  
   const gameContainerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const handleFullscreenChange = () => { setIsFullscreen(!!document.fullscreenElement); };
-  
+  const t = LANGUAGES[selectedLang];
+
+  // --- FULLSCREEN ---
   useEffect(() => {
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    const handleFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFs);
+    return () => document.removeEventListener('fullscreenchange', handleFs);
   }, []);
 
   const toggleFullscreen = () => {
-    const elem = gameContainerRef.current;
-    if (!elem) return;
-    if (!document.fullscreenElement) {
-      elem.requestFullscreen().catch(err => alert(`Error: ${err.message}`));
-    } else {
-      document.exitFullscreen();
-    }
+    if (!gameContainerRef.current) return;
+    if (!document.fullscreenElement) gameContainerRef.current.requestFullscreen();
+    else document.exitFullscreen();
   };
 
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.continuous = false;
       recognition.lang = 'vi-VN';
-      
-      recognition.onstart = () => {
-        setIsRecording(true);
-        setUserInput("");
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onresult = (e: any) => {
+        const text = e.results[0][0].transcript;
+        handleSendMessage(text);
       };
-
-      recognition.onresult = (event: any) => {
-        if (isProcessingRef.current) return;
-        let interimTranscript = "";
-        let finalTranscript = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
-          else interimTranscript += event.results[i][0].transcript;
-        }
-        const currentProgress = finalTranscript || interimTranscript;
-        if (currentProgress) setUserInput(currentProgress);
-
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = window.setTimeout(() => {
-          const textToProcess = finalTranscript.trim() || interimTranscript.trim();
-          if (textToProcess && !isProcessingRef.current) {
-            recognition.stop();
-            handleSendMessage(textToProcess, true);
-          }
-        }, 2000); 
-      };
-
-      recognition.onerror = () => setIsRecording(false);
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [selectedLang]);
+  }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const cycleSpeechRate = () => {
-    if (speechRate === 1.0) setSpeechRate(1.2);
-    else if (speechRate === 1.2) setSpeechRate(1.4);
-    else if (speechRate === 1.4) setSpeechRate(0.8);
-    else if (speechRate === 0.8) setSpeechRate(0.6);
-    else setSpeechRate(1.0);
-  };
-
-  const speakWord = async (text: string, msgId: string | null = null) => {
+  // --- TTS ---
+  const speak = async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const parts = text.split('|');
-    const cleanText = parts[0].replace(/[*]/g, '').replace(/USER_TRANSLATION:.*$/gi, '').trim();
-    const segments = cleanText.split(/[,.!?;:]+/).map(s => s.trim()).filter(s => s.length > 0);
-    try {
-      for (const segment of segments) {
-        await new Promise<void>((resolve) => {
-          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-          audioRef.current.src = url;
-          audioRef.current.playbackRate = speechRate;
-          audioRef.current.onended = () => resolve();
-          audioRef.current.onerror = () => resolve();
-          audioRef.current.play().catch(() => resolve());
-        });
-      }
-    } catch (e) { console.error(e); } finally { if (msgId) setActiveVoiceId(null); }
+    const cleanText = text.split('|')[0].replace(/[*#]/g, '').trim();
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+    audioRef.current.src = url;
+    audioRef.current.playbackRate = speechRate;
+    audioRef.current.play().catch(console.error);
+    audioRef.current.onended = () => setActiveVoiceId(null);
   };
 
-  const speakSingleWord = (e: React.MouseEvent, word: string) => {
-    e.stopPropagation(); 
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=vi&client=tw-ob`;
-    const singleAudio = new Audio(url);
-    singleAudio.playbackRate = speechRate;
-    singleAudio.play().catch(console.error);
-  };
-
-  const handleDownloadConvo = () => {
-    const content = messages.map(msg => `[${msg.role === 'user' ? 'User' : 'Xuan'}]: ${msg.text.replace(/ \| /g, '\nTranslation: ')}`).join('\n\n');
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'xuan-barista-convo.txt';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleSendMessage = async (text: string, fromMic = false) => {
-    if (!text || !text.trim() || isProcessingRef.current) return;
+  // --- AI ENGINE ---
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
-    let processedInput = text.trim();
-
-    detectAndSetSpeed(processedInput);
-    
-    // UPDATED: Using gemini-2.5-flash
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-    try {
-      const prompt = fromMic 
-        ? `Reformat this Vietnamese voice transcript by adding correct punctuation and fixing grammar to make it natural. Keep it short. Transcript: "${processedInput}"`
-        : `Detect language of "${processedInput}". If NOT Vietnamese, translate to Vietnamese. Return ONLY the Vietnamese result.`;
-        
-      const response = await model.generateContent(prompt);
-      const aiResult = response.response.text();
-      if (aiResult) processedInput = aiResult.trim().replace(/^"|"$/g, '');
-    } catch (e) { console.error(e); }
 
     const userMsgId = `user-${Date.now()}`;
-    const newUserMsg = { role: 'user', text: processedInput, displayedText: text.trim(), translation: null, id: userMsgId };
-    
-    setMessages(prev => {
-      const history = [...prev, newUserMsg];
-      (async () => {
-        try {
-          const chatSession = model.startChat({
-            history: history.slice(0, -1).map(m => ({
-              role: m.role === 'ai' ? 'model' : 'user',
-              parts: [{ text: m.text }]
-            })),
-            generationConfig: {
-              maxOutputTokens: 500,
-            },
-          });
-
-          // Adding system instruction inside the final prompt to ensure model follows constraints
-          const finalPrompt = `${getSystemPrompt(t.systemPromptLang)}\n\nUser: ${processedInput}`;
-          const response = await model.generateContent(finalPrompt);
-          let rawAiResponse = response.response.text() || "";
-          rawAiResponse = rawAiResponse.replace(/[*]/g, '');
-          
-          const parts = rawAiResponse.split('|');
-          const lanVi = parts[0]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
-          const lanTrans = parts[1]?.replace(/USER_TRANSLATION:.*$/gi, '').trim() || "";
-          const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*(.*)$/i);
-          const userTranslationValue = userTransMatch ? userTransMatch[1].replace(/[\[\]]/g, '').trim() : "";
-          const cleanDisplay = `${lanVi} | ${lanTrans}`;
-          const aiMsgId = `ai-${Date.now()}`;
-          
-          setMessages(currentMsgs => {
-            const updated = [...currentMsgs];
-            const userIdx = updated.findIndex(m => m.id === userMsgId);
-            if (userIdx !== -1) updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
-            updated.push({ role: 'ai', text: cleanDisplay, id: aiMsgId, displayedText: cleanDisplay });
-            return updated;
-          });
-          
-          await speakWord(cleanDisplay, aiMsgId);
-
-          if (lanVi.includes("mang đồ uống tới ngay")) {
-            setTimeout(async () => {
-              const servingMsgId = `ai-serving-${Date.now()}`;
-              const servingTextVi = "Đồ uống của anh đây ạ. Chúc anh ngon miệng! 🥤";
-              const servingTextEN = "Here is your drink. Enjoy your meal!";
-              const servingFullText = `${servingTextVi} | ${servingTextEN}`;
-              
-              setMessages(prevMsgs => [...prevMsgs, { 
-                role: 'ai', 
-                text: servingFullText, 
-                id: servingMsgId, 
-                displayedText: servingFullText 
-              }]);
-              await speakWord(servingFullText, servingMsgId);
-            }, 5000);
-          }
-
-        } catch (error) { console.error(error); } finally { setIsThinking(false); isProcessingRef.current = false; }
-      })();
-      return history;
-    });
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null };
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
+
+    try {
+      const history = messages.map(m => ({
+        role: m.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: m.text.split('|')[0].trim() }]
+      }));
+
+      // CẬP NHẬT: Sử dụng generateContentWithRetry thay vì fetch trực tiếp
+      const response = await generateContentWithRetry({
+        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
+        contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
+        config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
+      });
+
+      const rawAiResponse = response.text || "";
+      const parts = rawAiResponse.split('|');
+      const aiVi = parts[0]?.trim() || "";
+      const aiTrans = parts[1]?.trim() || "";
+
+      const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
+      const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
+
+      const aiMsgId = `ai-${Date.now()}`;
+      const cleanDisplay = `${aiVi} ${aiTrans ? '| ' + aiTrans : ''}`;
+
+      setMessages(prev => {
+        const updated = [...prev];
+        const userIdx = updated.findIndex(m => m.id === userMsgId);
+        if (userIdx !== -1) updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
+        return [...updated, { role: 'ai', text: cleanDisplay, id: aiMsgId }];
+      });
+
+      speak(cleanDisplay, aiMsgId);
+
+      if (aiVi.toLowerCase().includes("mang đồ uống tới ngay")) {
+        setTimeout(() => {
+          const serviceId = `ai-service-${Date.now()}`;
+          const serviceText = "Dạ, đồ uống của Anh đây ạ. Chúc Anh ngon miệng nhé! 🥤 | Here is your drink. Enjoy! ✨";
+          setMessages(prev => [...prev, { role: 'ai', text: serviceText, id: serviceId }]);
+          speak(serviceText, serviceId);
+        }, 4000);
+      }
+
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsThinking(false);
+      isProcessingRef.current = false;
+    }
   };
 
   const renderInteractiveText = (text: string) => {
-    if (!text) return null;
-    const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
-    let result: (string | React.JSX.Element)[] = [];
-    let remainingText = text;
-    while (remainingText.length > 0) {
-      let match: any = null;
-      for (const key of sortedKeys) {
-        const regex = new RegExp(`^${key}`, 'i');
-        const found = remainingText.match(regex);
-        if (found) {
-          match = { key: key, original: found[0], info: (DICTIONARY as any)[key] };
-          break;
-        }
-      }
-      if (match) {
-        const typeColor = match.info.type === "Noun" ? "text-blue-500" : match.info.type === "Verb" ? "text-emerald-500" : "text-teal-500";
-        result.push(
-          <span key={remainingText.length} className="group relative inline-block border-b border-dotted border-slate-300 hover:border-blue-400 cursor-help px-0.5 rounded transition-colors">
-            {match.original}
-            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max min-w-[120px] max-w-[200px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl z-50 flex flex-col items-center gap-1.5 border border-slate-700">
-              <div className="flex items-center justify-between w-full gap-2 border-b border-slate-700 pb-1.5">
-                <span className={`font-black text-[8px] uppercase tracking-tighter ${typeColor}`}>{match.info.type}</span>
-                <button onClick={(e) => speakSingleWord(e, match.original)} className="p-1 hover:bg-slate-700 rounded-md transition-colors text-blue-400"><Volume1 size={14} /></button>
-              </div>
-              <span className="font-bold text-center leading-tight w-full">{match.info.EN}</span>
-              <span className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-slate-800"></span>
+    return text.split(/(\s+)/).map((word, idx) => {
+      const clean = word.toLowerCase().replace(/[.,!?;]/g, '');
+      const entry = DICTIONARY[clean];
+      if (entry) {
+        return (
+          <span key={idx} className="group relative border-b border-dotted border-blue-400 cursor-help text-blue-700 font-bold">
+            {word}
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-800 text-white text-[10px] rounded-lg z-50 w-max shadow-xl">
+              {entry.EN}
             </span>
           </span>
         );
-        remainingText = remainingText.slice(match.original.length);
-      } else {
-        const nonMatch = remainingText.match(/^[^\s,.;!?|]+/);
-        if (nonMatch) {
-          result.push(<span key={remainingText.length}>{nonMatch[0]}</span>);
-          remainingText = remainingText.slice(nonMatch[0].length);
-        } else {
-          result.push(<span key={remainingText.length}>{remainingText[0]}</span>);
-          remainingText = remainingText.slice(1);
-        }
       }
-    }
-    return result;
+      return <span key={idx}>{word}</span>;
+    });
   };
 
-  const detectAndSetSpeed = (text: string) => {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes("nói chậm") || lowerText.includes("speak slower")) {
-      setSpeechRate(0.8);
-      return true;
-    }
-    if (lowerText.includes("nói nhanh") || lowerText.includes("speak faster")) {
-      setSpeechRate(1.2);
-      return true;
-    }
-    return false;
-  };
-
-  const toggleRecording = () => {
-    if (!recognitionRef.current) return;
-    isRecording ? recognitionRef.current.stop() : recognitionRef.current.start();
-  };
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   if (gameState === 'start') {
     return (
-      <div className="w-full h-full bg-blue-50 flex items-center justify-center p-4 font-sans text-slate-800">
-        <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl flex flex-col items-center justify-center p-12 border-[10px] border-blue-100 text-center">
-          <div className="w-56 h-56 mb-6 rounded-full overflow-hidden border-4 border-blue-400 shadow-lg">
-            <img src={XUAN_IMAGE_URL} alt="Xuan" className="w-full h-full object-cover" />
+      <div className="w-full h-full bg-blue-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 text-center border-[10px] border-white">
+          <img src={character.avatarUrl} className="w-44 h-44 mx-auto mb-6 rounded-full border-4 border-blue-400 object-cover shadow-lg" alt="Xuan" />
+          <h1 className="text-4xl font-black text-blue-600 mb-2 italic underline decoration-wavy decoration-yellow-400">Xuân Smoothie </h1>
+          <p className="text-slate-400 mb-10 font-medium italic">{t.ui_welcome}</p>
+          <div className="flex gap-4 justify-center mb-10">
+            {(['EN', 'RU'] as const).map(l => (
+              <button key={l} onClick={() => setSelectedLang(l)} className={`px-8 py-3 rounded-2xl font-black transition-all ${selectedLang === l ? 'bg-blue-600 text-white shadow-lg scale-105' : 'bg-blue-50 text-blue-400'}`}>
+                {LANGUAGES[l].label}
+              </button>
+            ))}
           </div>
-          <h1 className="text-4xl font-black text-blue-600 mb-2 uppercase tracking-tighter italic">Healthy Juice: Xuan 🥤</h1>
-          <p className="text-slate-400 mb-8 font-medium text-lg italic">{t.ui_welcome}</p>
-          <div className="flex flex-col items-center space-y-8 w-full">
-            <div className="flex space-x-4">
-              {(['EN', 'RU'] as const).map(lang => (
-                <button key={lang} onClick={() => setSelectedLang(lang)} className={`px-6 py-3 rounded-xl font-bold transition-all border-2 ${selectedLang === lang ? 'border-blue-50 bg-blue-50 text-blue-600 ring-4 ring-blue-100' : 'border-slate-100 text-slate-400'}`}>{LANGUAGES[lang].label}</button>
-              ))}
-            </div>
-            <button onClick={() => { setMessages([{ role: 'ai', text: t.welcome_msg.replace(/[*]/g, ''), displayedText: t.welcome_msg.replace(/[*]/g, ''), id: 'init' }]); setGameState('playing'); speakWord(t.welcome_msg.replace(/[*]/g, ''), 'init'); }} className="flex items-center space-x-3 font-black py-5 px-16 rounded-2xl transition-all shadow-xl bg-blue-600 text-white hover:scale-105 active:scale-95">
-              <Play fill="white" size={20} /> <span className="text-xl tracking-widest">{t.ui_start}</span>
-            </button>
-          </div>
+          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="w-full py-6 bg-emerald-500 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3">
+            <Play fill="white" /> {t.ui_start}
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div ref={gameContainerRef} className="w-full h-full relative">
-      <div className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 font-sans overflow-hidden">
-        <div className="w-full h-full bg-white md:rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border-0 md:border-[10px] border-blue-50">
-          
-          <div className="h-[20vh] md:h-full md:w-1/3 bg-blue-50/40 p-4 md:p-8 flex flex-row md:flex-col items-center justify-between border-b md:border-b-0 md:border-r border-blue-100 shrink-0">
-            <div className="flex flex-row md:flex-col items-center gap-3 md:gap-4 h-full md:h-auto">
-              <div className="relative h-full aspect-square md:w-60 md:h-60 rounded-xl md:rounded-3xl overflow-hidden shadow-xl border-4 border-white bg-white shrink-0">
-                <img src={XUAN_IMAGE_URL} alt="Xuan" className="w-full h-full object-cover" />
-                {isThinking && <div className="absolute inset-0 bg-blue-900/20 flex items-center justify-center backdrop-blur-sm"><div className="w-2 h-2 bg-white rounded-full animate-ping"></div></div>}
-              </div>
-              <div className="text-left md:text-center flex flex-col justify-center">
-                <h2 className="text-lg md:text-2xl font-black text-slate-800 italic">Xuân🍓</h2>
-                <div className="flex items-center space-x-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                  <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600">{t.ui_status}</p>
-                </div>
-              </div>
+    <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative">
+      <div className="w-full h-full max-w-6xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
+        <div className="h-[20vh] md:h-full md:w-1/3 bg-blue-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-blue-100 shrink-0 z-20 shadow-xl">
+          <div className="flex flex-row md:flex-col items-center gap-6">
+            <div className="relative">
+              <img src={character.avatarUrl} className="w-20 h-20 md:w-56 md:h-56 rounded-full border-4 border-white shadow-xl object-cover" alt="Xuan" />
+              {isThinking && <div className="absolute inset-0 bg-blue-400/20 animate-pulse rounded-full" />}
             </div>
-            <div className="flex flex-col items-center justify-center h-full md:h-auto">
-              <button onClick={toggleRecording} className={`w-14 h-14 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 ${isRecording ? 'bg-red-500 ring-4 ring-red-100' : 'bg-blue-600'}`}>
-                {isRecording ? <MicOff size={24} className="md:w-8 md:h-8" color="white" /> : <Mic size={24} className="md:w-8 md:h-8" color="white" />}
-              </button>
-              <p className="hidden md:block mt-4 font-black text-blue-700 text-[10px] tracking-widest uppercase opacity-60">{isRecording ? t.ui_listening : t.ui_tapToTalk}</p>
+            <div className="text-left md:text-center">
+              <h2 className="text-xl md:text-3xl font-black text-slate-800 italic">Xuân</h2>
+              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">{t.ui_status}</span>
             </div>
           </div>
-  
-          <div className="h-[80vh] md:h-full md:flex-1 flex flex-col bg-white overflow-hidden relative">
-            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-slate-50 flex items-center justify-between shrink-0 bg-white z-10">
-              <div className="flex flex-col">
-                <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
-                <span className="text-[10px] font-black text-blue-600 uppercase">30k / Ly 💸</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <button onClick={handleDownloadConvo} className="p-2 md:px-3 md:py-2 bg-emerald-50 rounded-xl text-emerald-600"><Download size={14} /></button>
-                <button onClick={cycleSpeechRate} className="bg-orange-50 text-orange-600 px-2 py-2 rounded-xl font-black text-[10px] flex items-center gap-1"><Gauge size={14} /><span>{Math.round(speechRate * 100)}%</span></button>
-              </div>
+          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-14 h-14 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-xl ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {isRecording ? <MicOff color="white" size={28} /> : <Mic color="white" size={28} />}
+          </button>
+        </div>
+
+        <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
+          <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-white z-10 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Globe size={14} className="text-blue-500" />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
             </div>
-  
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 bg-blue-50/5 custom-scrollbar scroll-smooth">
-              <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #bfdbfe; border-radius: 10px; }`}</style>
-              {messages.map((msg) => {
-                const displayString = msg.displayedText || "";
-                const parts = displayString.split('|');
-                const mainText = parts[0]?.trim();
-                const subText = parts[1]?.trim();
-                const isActive = activeVoiceId === msg.id;
-                return (
-                  <div id={`msg-${msg.id}`} key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] md:max-w-[85%] p-3.5 md:p-5 rounded-2xl md:rounded-3xl shadow-md relative transition-all ${isActive ? 'ring-2 ring-blue-200' : ''} ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-blue-50'}`}>
-                      <div className="flex flex-col">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="text-sm md:text-lg font-bold leading-snug">
-                            {msg.role === 'ai' ? renderInteractiveText(mainText) : mainText}
-                          </div>
-                          <button onClick={() => speakWord(msg.role === 'ai' ? msg.text : mainText, msg.id)} className={`p-1.5 md:p-2.5 rounded-lg shrink-0 ${msg.role === 'user' ? 'text-blue-100 hover:bg-blue-500' : 'text-blue-600 hover:bg-blue-50'}`}>
-                            <Volume2 size={16} />
-                          </button>
-                        </div>
-                        {((msg.role === 'ai' && subText) || (msg.role === 'user' && msg.translation)) && (
-                          <p className={`text-[10px] italic border-t pt-1.5 mt-2 ${msg.role === 'user' ? 'border-blue-500 text-blue-200' : 'border-slate-100 text-slate-400'}`}>
-                            {msg.role === 'ai' ? subText : msg.translation}
-                          </p>
-                        )}
-                      </div>
+            <div className="flex gap-2">
+               <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-2">
+                 <Gauge size={14}/> {speechRate === 1.0 ? '100%' : '70%'}
+               </button>
+               <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Maximize size={18}/></button>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 bg-blue-50/10 custom-scrollbar">
+            {messages.map((msg) => {
+              const parts = msg.text.split('|');
+              const isActive = activeVoiceId === msg.id;
+              return (
+                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-5 md:p-6 rounded-[2rem] transition-all shadow-sm ${isActive ? 'ring-4 ring-blue-100' : ''} ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-blue-100'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="text-base md:text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(parts[0]) : msg.text}</div>
+                      <button onClick={() => speak(msg.text, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
                     </div>
+                    {(parts[1] || msg.translation) && (
+                      <div className={`mt-3 pt-3 border-t text-[11px] italic font-medium ${msg.role === 'user' ? 'border-blue-500 text-blue-100' : 'border-slate-50 text-slate-400'}`}>
+                        {msg.role === 'ai' ? parts[1] : msg.translation}
+                      </div>
+                    )}
                   </div>
-                );
-              })}
-              <div ref={chatEndRef} className="h-4" />
-            </div>
-  
-            <div className="p-4 md:p-6 bg-white border-t border-slate-50 flex gap-2 shrink-0 pb-8 md:pb-6">
-              <input 
-                type="text" 
-                value={userInput} 
-                onChange={(e) => setUserInput(e.target.value)} 
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(userInput)} 
-                placeholder={isRecording ? "Listening..." : t.ui_placeholder} 
-                className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium text-sm ${isRecording ? 'bg-blue-50 border-blue-300 italic' : 'bg-slate-50 border-transparent focus:border-blue-100 focus:bg-white focus:outline-none'}`} 
-              />
-              <button onClick={() => handleSendMessage(userInput)} disabled={isThinking || !userInput.trim()} className="bg-emerald-500 text-white px-4 rounded-xl hover:bg-emerald-600 disabled:opacity-50 transition-all"><Send size={18} /></button>
-            </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
           </div>
+
+          <footer className="p-6 md:p-8 bg-white border-t flex gap-3 pb-10 md:pb-8">
+            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold transition-all focus:bg-white focus:ring-4 ring-blue-50 shadow-inner" />
+            <button onClick={() => handleSendMessage(userInput)} className="bg-emerald-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:scale-105 transition-all"><Send size={20}/></button>
+          </footer>
         </div>
       </div>
-      <button onClick={toggleFullscreen} title="Toggle Fullscreen" className="absolute bottom-4 right-4 bg-black/10 text-white/40 p-1.5 rounded-full backdrop-blur-sm hover:bg-black/30 hover:text-white/70 transition-all opacity-20 hover:opacity-100 z-50">
-          {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-      </button>
     </div>
   );
 };
+
+export default GameSpeakAISmoothie;
