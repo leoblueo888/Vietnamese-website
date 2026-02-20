@@ -17,7 +17,7 @@ const DICTIONARY = {
   "banh mì": { EN: "Bánh Mì (Sandwich)", RU: "Бань Ми" },
   "cà phê muối": { EN: "Salt Coffee", RU: "Соленый кофе" },
   "cà phê trứng": { EN: "Egg Coffee", RU: "Кофе с яйцом" },
-  "nem rán": { EN: "Spring Rolls", RU: "Нем (Роллы)" },
+  "nem rán": { EN: "Spring Rolls", RU: "Нem (Роллы)" },
   "bạn bè": { EN: "friends", RU: "друзья" },
   "gia đình": { EN: "family", RU: "семья" },
   "bố mẹ": { EN: "parents", RU: "родители" },
@@ -93,51 +93,51 @@ const DICTIONARY = {
 };
 
 const getTranslations = (topic?: string | null) => {
-    const userString = localStorage.getItem('user');
-    const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
-    const userName = user.name || 'Guest';
-    const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
+  const userString = localStorage.getItem('user');
+  const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
+  const userName = user.name || 'Guest';
+  const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
-    const t = {
-      EN: {
-        label: "English",
-        ui_welcome: "Hi! I'm Thu. Let's talk!",
-        ui_start: "START CHAT",
-        ui_placeholder: "Type message here...",
-        ui_recording: "LISTENING...",
-        ui_tapToTalk: "Tap mic to speak Vietnamese",
-        ui_listening: "Thu is listening...",
-        ui_status: "Online - Hanoi",
-        ui_learning_title: "HANOI SOUL & FRIENDSHIP",
-        ui_listen_all: "Listen All",
-        ui_download: "Download",
-        ui_clear: "Clear",
-        welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được làm quen với ${userPronoun}. ${userPronoun} đang có một ngày thế nào ạ? ✨ | Hello ${userName}, I'm Thu. I'm glad to meet you. How is your day going? ✨`,
-        systemPromptLang: "English"
-      },
-      RU: {
-        label: "Русский",
-        ui_welcome: "Привет! Я Тху. Давай пообщаемся!",
-        ui_start: "НАCHАТЬ CHAT",
-        ui_placeholder: "Пишите сообщение...",
-        ui_recording: "СЛУШАЮ...",
-        ui_tapToTalk: "Нажмите, để nói tiếng Việt",
-        ui_listening: "Тху слушает...",
-        ui_status: "В сети - Ханой",
-        ui_learning_title: "ДУША ХАНОЯ И ДРУЖБА",
-        ui_listen_all: "Слушать всё",
-        ui_download: "Скачать",
-        ui_clear: "Очистить",
-        welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được gặp ${userPronoun} hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸 | Здравствуйте ${userName}, я Тху. Я rất vui được gặp bạn hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸`,
-        systemPromptLang: "Russian"
-      }
-    };
-
-    if (topic) {
-        t.EN.welcome_msg = `Chào ${userPronoun} ${userName}, em thấy ${userPronoun} vừa học xong chủ đề "${topic}". Mình cùng trò chuyện về chủ đề này nhé? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
-        t.RU.welcome_msg = `Здравствуйте ${userName}, я вижу, вы только что закончили тему "${topic}". Поговорим об этом? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
+  const t = {
+    EN: {
+      label: "English",
+      ui_welcome: "Hi! I'm Thu. Let's talk!",
+      ui_start: "START CHAT",
+      ui_placeholder: "Type message here...",
+      ui_recording: "LISTENING...",
+      ui_tapToTalk: "Tap mic to speak Vietnamese",
+      ui_listening: "Thu is listening...",
+      ui_status: "Online - Hanoi",
+      ui_learning_title: "HANOI SOUL & FRIENDSHIP",
+      ui_listen_all: "Listen All",
+      ui_download: "Download",
+      ui_clear: "Clear",
+      welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được làm quen với ${userPronoun}. ${userPronoun} đang có một ngày thế nào ạ? ✨ | Hello ${userName}, I'm Thu. I'm glad to meet you. How is your day going? ✨`,
+      systemPromptLang: "English"
+    },
+    RU: {
+      label: "Русский",
+      ui_welcome: "Привет! Я Тху. Давай пообщаемся!",
+      ui_start: "НАCHАТЬ CHAT",
+      ui_placeholder: "Пишите сообщение...",
+      ui_recording: "СЛУШАЮ...",
+      ui_tapToTalk: "Нажмите, để nói tiếng Việt",
+      ui_listening: "Тху слушает...",
+      ui_status: "В сети - Ханой",
+      ui_learning_title: "ДУША ХАНОЯ И ДРУЖБА",
+      ui_listen_all: "Слушать всё",
+      ui_download: "Скачать",
+      ui_clear: "Очистить",
+      welcome_msg: `Chào ${userPronoun} ${userName}, em là Thu đây. Em rất vui được gặp ${userPronoun} hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸 | Здравствуйте ${userName}, я Тху. Я rất vui được gặp bạn hôm nay. Hy vọng chúng ta sẽ có những cuộc trò chuyện thú vị nhé! 🌸`,
+      systemPromptLang: "Russian"
     }
-    return t;
+  };
+
+  if (topic) {
+    t.EN.welcome_msg = `Chào ${userPronoun} ${userName}, em thấy ${userPronoun} vừa học xong chủ đề "${topic}". Mình cùng trò chuyện về chủ đề này nhé? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
+    t.RU.welcome_msg = `Здравствуйте ${userName}, я вижу, вы только что закончили тему "${topic}". Поговорим об этом? ✨ | Hi ${userName}, I see you just finished the topic "${topic}". Shall we talk about it? ✨`;
+  }
+  return t;
 };
 
 const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
@@ -177,7 +177,8 @@ const punctuateText = async (rawText: string) => {
   try {
     const response = await generateContentWithRetry({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }]
+      contents: [{ role: 'user', parts: [{ text: `Hãy thêm dấu chấm, phẩy và viết hoa đúng quy tắc cho đoạn văn bản tiếng Việt sau đây (chỉ trả về văn bản kết quả, không giải thích): "${rawText}"` }] }],
+      config: { systemInstruction: "You are a helpful assistant that punctuates Vietnamese text." }
     });
     return response.text?.trim() || rawText;
   } catch (error) {
@@ -202,7 +203,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   const silenceTimerRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const THU_IMAGE_URL = "https://drive.google.com/thumbnail?id=1v6W4uH8X_K2K0G_W9Z0m_G_xX_xX_xX&sz=w800";
+  const THU_IMAGE_URL = "https://drive.google.com/thumbnail?id=13zY8mO7D09A_Xw_R9_C-oO1G_O8J_oX_&sz=w800";
   const t = getTranslations(topic)[selectedLang];
 
   const speakWord = useCallback(async (text: string, msgId: string | null = null) => {
@@ -242,17 +243,22 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
     setIsThinking(true);
     
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null, displayedText: text.trim() }]);
+    const newUserMsg = { role: 'user', text: text.trim(), id: userMsgId, translation: null, displayedText: text.trim() };
+    
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
 
     try {
+        // ĐỒNG BỘ CẤU TRÚC CONFIG VỚI GAME LAN
         const response = await generateContentWithRetry({
             model: 'gemini-3-flash-preview',
-            contents: [...messages, { role: 'user', text: text.trim() }].map(m => ({
+            contents: [...messages, newUserMsg].map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
-            systemInstruction: getSystemPrompt(t.systemPromptLang, topic)
+            config: { 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+            }
         });
         
         const rawAiResponse = response.text || "";
