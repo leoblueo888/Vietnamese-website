@@ -187,7 +187,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
     try {
       const chatPayload = {
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         config: {
           systemInstruction: `
             BỐI CẢNH: Bạn là Mai, một người phụ nữ 45 tuổi đến từ Ninh Bình (Năm 2026).
