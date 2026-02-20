@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Minimize, Globe } from 'lucide-react';
+import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
 // --- DICTIONARY DATA ---
@@ -94,7 +95,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
   }, []);
 
   // --- TTS LOGIC ---
-  const speak = async (text: string, msgId: string | null = null) => {
+  const speak = useCallback(async (text: string, msgId: string | null = null) => {
     if (msgId) setActiveVoiceId(msgId);
     let cleanText = text.split('|')[0].trim().replace(/[*]/g, '');
     cleanText = cleanText.replace(/(\d+)\.000/g, '$1 nghìn').replace(/(\d+)k/gi, '$1 nghìn');
@@ -106,7 +107,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     audioRef.current.playbackRate = speechRate;
     audioRef.current.onended = () => setActiveVoiceId(null);
     audioRef.current.play().catch(() => setActiveVoiceId(null));
-  };
+  }, [speechRate]);
 
   // --- AI ENGINE ---
   const handleSendMessage = async (text: string, fromMic = false) => {
@@ -116,33 +117,32 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     
     let processedInput = text.trim();
 
+    // Sửa lỗi chính tả tự động từ Voice qua API
     if (fromMic) {
       try {
-        const voiceReformResponse = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Sửa lỗi chính tả và làm cho câu sau tự nhiên hơn: "${processedInput}"`,
-            systemPrompt: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không nói thêm gì khác."
-          })
+        const response = await generateContentWithRetry({
+          model: 'gemini-1.5-flash',
+          contents: [{ role: 'user', parts: [{ text: `Sửa lỗi chính tả và làm cho câu sau tự nhiên hơn: "${processedInput}"` }] }],
+          config: { systemInstruction: "Bạn là trợ lý sửa lỗi văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không nói thêm gì khác." }
         });
-        const voiceData = await voiceReformResponse.json();
-        if (voiceData.text) processedInput = voiceData.text.trim().replace(/^"|"$/g, '');
+        if (response.text) processedInput = response.text.trim().replace(/^"|"$/g, '');
       } catch (e) { console.error("Lỗi sửa voice:", e); }
     }
 
     const userMsgId = `user-${Date.now()}`;
-    setMessages(prev => [...prev, { role: 'user', text: processedInput, id: userMsgId }]);
+    const newUserMsg = { role: 'user', text: processedInput, id: userMsgId };
+    setMessages(prev => [...prev, newUserMsg]);
     setUserInput("");
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: processedInput, 
-          history: messages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })),
-          systemPrompt: `
+      const response = await generateContentWithRetry({
+        model: 'gemini-1.5-flash',
+        contents: [...messages, newUserMsg].map(m => ({
+          role: m.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: m.text.split('|')[0].trim() }]
+        })),
+        config: { 
+          systemInstruction: `
             BỐI CẢNH: Bạn tên là Thanh (25 tuổi), chuyên gia bán hải sản và thịt tươi sống tại chợ.
             PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn.
             ĐỊNH DẠNG: Tiếng Việt | Dịch sang ${t.systemPromptLang}.
@@ -151,18 +151,17 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
             2. Quy trình bán hàng: Chào hỏi -> Gợi ý đồ tươi hôm nay -> Báo giá và tư vấn cách nấu.
             3. Tuyệt đối không dùng ký tự *. Trả lời ngắn gọn, đúng trọng tâm bán hàng.
           `
-        })
+        }
       });
 
-      const data = await response.json();
-      if (data.text) {
+      if (response.text) {
         const aiMsgId = `ai-${Date.now()}`;
-        const cleanAIData = data.text.replace(/[*]/g, '');
+        const cleanAIData = response.text.replace(/[*]/g, '');
         setMessages(prev => [...prev, { role: 'ai', text: cleanAIData, id: aiMsgId }]);
         speak(cleanAIData, aiMsgId);
       }
     } catch (e) {
-      console.error(e);
+      console.error("AI Error:", e);
     } finally {
       setIsThinking(false);
       isProcessingRef.current = false;
