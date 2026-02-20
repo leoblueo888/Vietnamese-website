@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, Send, Volume2, Sparkles, Gauge, Maximize, Minimize } from 'lucide-react';
-// ĐỒNG BỘ: Sử dụng hàm lấy key xoay vòng tập trung
 import { generateContentWithRetry } from '../config/apiKeys';
 
-// --- DICTIONARY ---
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
     "rau muống": { EN: "water spinach", type: "Noun" },
     "cà chua": { EN: "tomato", type: "Noun" },
@@ -40,7 +38,6 @@ const LANGUAGES = {
     }
 };
 
-// --- SMART UTILS ---
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
@@ -64,7 +61,6 @@ STRICT RULE 4: Just focus on selling veggies, prices (using "nghìn"), and askin
 FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Brief translation of user's last message]`;
 };
 
-// --- ĐỔI TÊN THÀNH GameSpeakAIVegetables ĐỂ KHỚP VỚI FILE APP ---
 export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => void; language?: any; credit?: number; setCredit?: any; setIsCreditModalOpen?: any }> = ({ 
     character, 
     onBack, 
@@ -92,7 +88,6 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
 
     const t = LANGUAGES[selectedLang];
 
-    // --- FULLSCREEN ---
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
             gameContainerRef.current?.requestFullscreen();
@@ -103,16 +98,13 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
         }
     };
 
-    // --- TTS Logic ---
     const speak = useCallback(async (text: string, msgId: string | null = null) => {
         if (!text) return;
         if (msgId) setActiveVoiceId(msgId);
-
         if (currentAudioRef.current) {
             currentAudioRef.current.pause();
             currentAudioRef.current = null;
         }
-
         const viPart = text.split('|')[0].replace(/[*_#]/g, '').trim();
         const segments = viPart.split(/([.!?])/).reduce((acc: string[], cur, i, arr) => {
             if (i % 2 === 0) {
@@ -121,7 +113,6 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
             }
             return acc;
         }, []);
-
         try {
             for (const segment of segments) {
                 await new Promise<void>((resolve, reject) => {
@@ -141,7 +132,6 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
         }
     }, [speechRate]);
 
-    // --- Speech Recognition ---
     useEffect(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -149,14 +139,10 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'vi-VN';
-            
             recognition.onstart = () => setIsRecording(true);
             recognition.onresult = (e: any) => {
-                const transcript = Array.from(e.results)
-                    .map((res: any) => res[0].transcript)
-                    .join('');
+                const transcript = Array.from(e.results).map((res: any) => res[0].transcript).join('');
                 setUserInput(transcript);
-
                 if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
                 silenceTimerRef.current = setTimeout(async () => {
                     if (transcript.trim() && !isProcessingRef.current) {
@@ -173,55 +159,41 @@ export const GameSpeakAIVegetables: React.FC<{ character: any; onBack?: () => vo
 
     const handleSendMessage = async (text: string) => {
         if (!text.trim() || isProcessingRef.current) return;
-        
-        // Kiểm tra Credit từ Props
         if (credit !== undefined && credit <= 0) {
             if (setIsCreditModalOpen) setIsCreditModalOpen(true);
             return;
         }
-
         isProcessingRef.current = true;
         setIsThinking(true);
-
         const userMsgId = `user-${Date.now()}`;
         setMessages(prev => [...prev, { role: 'user', text: text.trim(), id: userMsgId, translation: null }]);
         setUserInput("");
-
-        // Trừ Credit
         if (setCredit) setCredit((prev: number) => Math.max(0, prev - 1));
-
         try {
             const chatHistory = messages.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 parts: [{ text: m.text.split('|')[0].trim() }]
             }));
-
             const response = await generateContentWithRetry({
                 model: 'gemini-2.5-flash',
                 contents: [...chatHistory, { role: 'user', parts: [{ text: text.trim() }] }],
                 config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
             });
-
             const rawAiResponse = response.text || "";
             const parts = rawAiResponse.split('|');
             const aiVi = parts[0]?.trim() || "";
             const aiTrans = parts[1]?.trim() || "";
-            
             const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*\[(.*?)\]/is);
             const userTranslationValue = userTransMatch ? userTransMatch[1].trim() : "";
-
             const aiMsgId = `ai-${Date.now()}`;
             const cleanDisplay = `${aiVi} | ${aiTrans}`;
-
             setMessages(prev => {
                 const updated = [...prev];
                 const userIdx = updated.findIndex(m => m.id === userMsgId);
                 if (userIdx !== -1) updated[userIdx] = { ...updated[userIdx], translation: userTranslationValue };
                 return [...updated, { role: 'ai', text: cleanDisplay, id: aiMsgId }];
             });
-
             speak(cleanDisplay, aiMsgId);
-
         } catch (e) {
             console.error("Gemini Error:", e);
         } finally {
