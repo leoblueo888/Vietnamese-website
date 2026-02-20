@@ -119,7 +119,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
     if (fromMic) {
       try {
         const voiceResponse = await generateContentWithRetry({
-          model: 'gemini-1.5-flash',
+          model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: `Sửa lỗi chính tả câu này để nó tự nhiên hơn: "${processedInput}"` }] }],
           config: { systemInstruction: "Bạn là trợ lý sửa văn bản. Chỉ trả về kết quả tiếng Việt sạch, không giải thích, không thêm dấu ngoặc." }
         });
@@ -135,7 +135,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
     // Nhập vai nhân vật Linh qua API chuẩn
     try {
       const response = await generateContentWithRetry({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: [...messages, newUserMsg].map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: m.text.split('|')[0].trim() }]
