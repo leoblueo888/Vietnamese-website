@@ -18,7 +18,8 @@ const API_KEYS = [
   import.meta.env.VITE_GEMINI_KEY_10,
 ].filter(key => !!key);
 
-let currentKeyIndex = 0;
+// THAY ĐỔI: Khởi tạo index ngẫu nhiên để tránh tập trung tải vào Key 1
+let currentKeyIndex = Math.floor(Math.random() * API_KEYS.length);
 
 export const getNextApiKey = () => {
   if (API_KEYS.length === 0) return null;
@@ -43,6 +44,9 @@ export const generateContentWithRetry = async (payload: {
   let lastError;
   
   for (let i = 0; i < API_KEYS.length; i++) {
+    // Lưu lại index hiện tại để log chính xác nếu lỗi
+    const tryingIndex = currentKeyIndex; 
+    
     try {
       const apiKey = getNextApiKey();
       const genAI = new GoogleGenerativeAI(apiKey!);
@@ -71,10 +75,17 @@ export const generateContentWithRetry = async (payload: {
 
     } catch (error: any) {
       lastError = error;
-      console.warn(`Key ${currentKeyIndex} lỗi: ${error.message}`);
+      // Log đúng Index đang thử nghiệm
+      console.warn(`Key index ${tryingIndex} gặp lỗi: ${error.message}`);
       
       // Nếu lỗi 404 (sai tên model) hoặc 429 (hết lượt), đổi sang key khác
-      if (error.message?.includes('404') || error.message?.includes('429') || error.message?.includes('quota')) {
+      if (
+        error.message?.includes('404') || 
+        error.message?.includes('429') || 
+        error.message?.includes('quota') ||
+        error.message?.includes('500') ||
+        error.message?.includes('503')
+      ) {
         continue;
       } else {
         throw error; 
