@@ -32,6 +32,7 @@ const DICTIONARY: Record<string, { EN: string; RU: string; type: string }> = {
   "nồng hậu": { EN: "hospitable", RU: "гостеприимный", type: "adj" },
 };
 
+
 const getTranslations = (topic?: string | null) => {
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
