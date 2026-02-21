@@ -138,7 +138,6 @@ export const GameSpeakAISmoothie: React.FC<{ character: AIFriend }> = ({ charact
       // CẬP NHẬT: Sử dụng generateContentWithRetry thay vì fetch trực tiếp
       const response = await generateContentWithRetry({
         model: 'gemini-2.5-flash',
-        model: 'gemini-2.5-flash',
         contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
         config: { systemInstruction: getSystemPrompt(t.systemPromptLang) }
       });
