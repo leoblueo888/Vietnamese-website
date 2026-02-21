@@ -99,7 +99,7 @@ STRICT RULE 2: Keep responses to 1-3 short sentences.`;
 
   return `${initialPrompt}
 FORMAT: Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Translation of user's last message]
-`;
+IMPORTANT: The first part (before the first |) MUST be 100% Vietnamese only. No English words allowed in the Vietnamese part.`;
 };
 
 const punctuateText = async (rawText: string) => {
@@ -179,6 +179,7 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
             return [...updated, newAiMsg];
         });
 
+        // Gọi speak với message ID để đánh dấu active
         speakWord(cleanDisplay, aiMsgId);
 
     } catch (error: any) {
@@ -261,24 +262,62 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     return chunks;
   };
 
+  // --- HÀM SPEAK ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
   const speakWord = async (text: string, msgId: any = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].trim();
+    
+    // Dừng âm thanh đang phát
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    audioRef.current.pause();
+
+    // Clean text trước khi đọc
+    const cleanText = text.split('|')[0]
+      .replace(/[*_`#|]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[✨🎵🔊🔔❌✅⭐🌊🌸]/g, '')
+      .trim();
+      
+    if (!cleanText) {
+      if (msgId) setActiveVoiceId(null);
+      return;
+    }
+
     const chunks = createChunks(cleanText);
     
     try {
       for (const chunk of chunks) {
         await new Promise<void>((resolve) => {
-          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+          // Dùng API proxy (quan trọng!)
+          const url = `/api/tts?text=${encodeURIComponent(chunk)}&lang=vi`;
           audioRef.current.src = url;
-          audioRef.current.playbackRate = speechSpeed; 
+          audioRef.current.playbackRate = speechSpeed;
+          
           audioRef.current.onended = () => resolve();
-          audioRef.current.onerror = () => resolve();
-          audioRef.current.play().catch(() => resolve());
+          audioRef.current.onerror = () => {
+            // Fallback khi lỗi API
+            const fb = new SpeechSynthesisUtterance(chunk);
+            fb.lang = 'vi-VN';
+            fb.rate = speechSpeed;
+            fb.onend = () => resolve();
+            window.speechSynthesis.speak(fb);
+          };
+          
+          audioRef.current.play().catch(() => {
+            // Fallback khi play lỗi
+            const fb = new SpeechSynthesisUtterance(chunk);
+            fb.lang = 'vi-VN';
+            fb.rate = speechSpeed;
+            fb.onend = () => resolve();
+            window.speechSynthesis.speak(fb);
+          });
         });
       }
-    } catch (e) { console.error(e); } finally { if (msgId) setActiveVoiceId(null); }
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      if (msgId) setActiveVoiceId(null); 
+    }
   };
   
   const toggleRecording = () => {
@@ -326,7 +365,11 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
         <div className="flex flex-row md:flex-col items-center gap-4 md:gap-4 overflow-hidden">
           <div className="relative w-[5.5rem] h-[5.5rem] md:w-48 md:h-48 rounded-full md:rounded-3xl overflow-hidden shadow-xl border-2 md:border-4 border-white bg-white shrink-0">
             <img src={LAN_IMAGE_URL} alt="Lan" className="w-full h-full object-cover" />
-            {isThinking && <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm animate-pulse"><div className="w-2 h-2 bg-white rounded-full mx-1 animate-bounce" /></div>}
+            {isThinking && (
+              <div className="absolute inset-0 bg-sky-900/20 flex items-center justify-center backdrop-blur-sm animate-pulse">
+                <div className="w-2 h-2 bg-white rounded-full mx-1 animate-bounce" />
+              </div>
+            )}
           </div>
           <div className="md:mt-6 text-left md:text-center shrink-0">
             <h2 className="text-xl md:text-2xl font-black text-slate-800 italic truncate max-w-[150px] md:max-w-none">Lan ✨</h2>
@@ -334,17 +377,26 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
           </div>
         </div>
         <div className="flex flex-col items-center shrink-0">
-          <button onClick={toggleRecording} className={`w-[4.5rem] h-[4.5rem] md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${isRecording ? 'bg-red-500 ring-4 md:ring-8 ring-red-100 animate-pulse' : 'bg-sky-500 hover:bg-sky-600'}`}>
+          <button 
+            onClick={toggleRecording} 
+            disabled={isThinking}
+            className={`w-[4.5rem] h-[4.5rem] md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${isRecording ? 'bg-red-500 ring-4 md:ring-8 ring-red-100 animate-pulse' : 'bg-sky-500 hover:bg-sky-600'} ${isThinking ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
             <Mic size={28} className="md:w-8 md:h-8" color="white" />
           </button>
-          <p className="hidden md:block mt-4 font-black text-sky-700 text-[10px] tracking-widest uppercase opacity-60 text-center">{isRecording ? t.ui_listening : t.ui_tapToTalk}</p>
+          <p className="hidden md:block mt-4 font-black text-sky-700 text-[10px] tracking-widest uppercase opacity-60 text-center">
+            {isRecording ? t.ui_listening : t.ui_tapToTalk}
+          </p>
         </div>
       </div>
       <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
         <div className="px-4 md:px-6 py-3 border-b border-slate-50 flex items-center justify-between shrink-0 bg-white z-10">
           <div className="flex flex-col">
             <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
-            <div className="flex items-center space-x-1.5 mt-0.5"><Globe size={10} className="text-sky-400" /><span className="text-[9px] md:text-[10px] font-black text-sky-600 uppercase">{t.label}</span></div>
+            <div className="flex items-center space-x-1.5 mt-0.5">
+              <Globe size={10} className="text-sky-400" />
+              <span className="text-[9px] md:text-[10px] font-black text-sky-600 uppercase">{t.label}</span>
+            </div>
           </div>
           <div className="flex items-center space-x-1 md:space-x-2">
               <button onClick={cycleSpeechSpeed} className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-slate-200 transition-colors">
@@ -355,25 +407,62 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 bg-sky-50/10 custom-scrollbar scroll-smooth">
           {messages.map((msg) => {
             const parts = (msg.displayedText || msg.text || "").split('|');
+            const isActive = activeVoiceId === msg.id;
+            
             return (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
-                  <p className="text-sm md:text-base font-bold">{msg.role === 'ai' ? parts[0] : msg.displayedText}</p>
+                <div className={`max-w-[90%] md:max-w-[85%] p-4 rounded-2xl md:rounded-3xl shadow-sm transition-all ${isActive ? 'ring-4 ring-sky-100' : ''} ${msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-white text-slate-800 border border-slate-100'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm md:text-base font-bold flex-1">
+                      {msg.role === 'ai' ? parts[0] : msg.displayedText}
+                    </p>
+                    {msg.role === 'ai' && (
+                      <button 
+                        onClick={() => speakWord(msg.text, msg.id)} 
+                        className="opacity-50 hover:opacity-100 transition-opacity"
+                        disabled={activeVoiceId === msg.id}
+                      >
+                        <Volume2 size={18} />
+                      </button>
+                    )}
+                  </div>
                   {((msg.role === 'ai' && parts[1]) || (msg.role === 'user' && msg.translation)) && (
-                    <p className="text-xs italic mt-2 pt-2 border-t border-black/10">{msg.role === 'ai' ? parts[1] : msg.translation}</p>
+                    <p className="text-xs italic mt-2 pt-2 border-t border-black/10">
+                      {msg.role === 'ai' ? parts[1] : msg.translation}
+                    </p>
                   )}
                 </div>
               </div>
             );
           })}
+          {isThinking && (
+            <div className="text-[10px] font-black text-sky-500 animate-pulse italic ml-4 uppercase tracking-widest">
+              Lan đang nghĩ...
+            </div>
+          )}
           <div ref={chatEndRef}></div>
         </div>
         <div className="p-3 md:p-4 border-t border-slate-50 flex gap-2 bg-white">
-          <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-4 py-3 rounded-xl bg-slate-50 font-medium outline-none border-2 border-transparent focus:border-sky-100" />
-          <button onClick={() => handleSendMessage(userInput)} disabled={isThinking} className="bg-sky-600 text-white px-5 rounded-xl transition-all active:scale-95"><Send size={20}/></button>
+          <input 
+            type="text" 
+            value={userInput} 
+            onChange={(e) => setUserInput(e.target.value)} 
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(userInput)} 
+            placeholder={t.ui_placeholder} 
+            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 font-medium outline-none border-2 border-transparent focus:border-sky-100" 
+            disabled={isThinking}
+          />
+          <button 
+            onClick={() => handleSendMessage(userInput)} 
+            disabled={isThinking || !userInput.trim()}
+            className="bg-sky-600 text-white px-5 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={20}/>
+          </button>
         </div>
       </div>
     </div>
   );
 };
+
 export default AIfriendLan;
