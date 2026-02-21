@@ -15,7 +15,7 @@ const DICTIONARY = {
   "phở": { EN: "Phở (Noodle Soup)", RU: "Фо (Суп)" },
   "bún chả": { EN: "Bún Chả (Grilled Pork)", RU: "Бун Cha" },
   "banh mì": { EN: "Bánh Mì (Sandwich)", RU: "Бань Ми" },
-  "cà phê muối": { EN: "Salt Coffee", RU: "Соленый кофе" },
+  "cà phê muối": { EN: "Salt Coffee", RU: "Соленыý кофе" },
   "cà phê trứng": { EN: "Egg Coffee", RU: "Кофе с яйцом" },
   "nem rán": { EN: "Spring Rolls", RU: "Нem (Роллы)" },
   "bạn bè": { EN: "friends", RU: "друзья" },
@@ -56,8 +56,7 @@ const DICTIONARY = {
   "nấu ăn": { EN: "cooking", RU: "готовить еду" },
   "giúp đỡ": { EN: "to help", RU: "помогать" },
   "tham quan": { EN: "to visit (sightseeing)", RU: "посещать" },
-  "khám phá": { EN: "to discover", RU: "открывать" },
-  "trải nghiệm": { EN: "to experience", RU: "испытывать" },
+  "khám phá": { EN: "to discover", RU: "открывать" },<br>  "trải nghiệm": { EN: "to experience", RU: "испытывать" },
   "thưởng thức": { EN: "to enjoy (food/art)", RU: "наслаждаться" },
   "trò chuyện": { EN: "to chat", RU: "беседовать" },
   "chia sẻ": { EN: "to share", RU: "делиться" },
@@ -117,14 +116,13 @@ const getTranslations = (topic?: string | null) => {
     },
     RU: {
       label: "Русский",
-      ui_welcome: "Привет! Я Тху. Давай пообщаемся!",
-      ui_start: "НАCHАТЬ CHAT",
+      ui_welcome: "Привет! Я Тху. Давай пообщаемся!",<br>      ui_start: "НАCHАТЬ CHAT",
       ui_placeholder: "Пишите сообщение...",
       ui_recording: "СЛУШАЮ...",
       ui_tapToTalk: "Нажмите, để nói tiếng Việt",
       ui_listening: "Тху слушает...",
       ui_status: "В сети - Ханой",
-      ui_learning_title: "ДУША ХАНОЯ И ДРУЖБА",
+      ui_learning_title: "ДУША ХАНОЯ И ĐРУЖБА",
       ui_listen_all: "Слушать всё",
       ui_download: "Скачать",
       ui_clear: "Очистить",
@@ -140,12 +138,7 @@ const getTranslations = (topic?: string | null) => {
   return t;
 };
 
-const getSystemPrompt = (targetLangName: string, topic?: string | null) => {
-  const userString = localStorage.getItem('user');
-  const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
-  const userName = user.name || 'Guest';
-  const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
-
+const getSystemPrompt = (targetLangName: string, userName: string, userPronoun: string, topic?: string | null) => {
   let topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam (Year 2026). Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 PERSONALITY & LOGIC:
 1. TONE: Sincere and natural. Speak like a real person, not an AI or a formal guide.
@@ -158,9 +151,9 @@ PERSONALITY & LOGIC:
   if (topic) {
     topicInstruction = `You are Thu, a friendly 35-year-old woman from Hanoi, Vietnam (Year 2026). Start the conversation naturally about "${topic}". Throughout the conversation, you MUST refer to yourself as "Em" and address the user, ${userName}, as "${userPronoun}". Speak gently, warmly, and naturally like two friends chatting.
 PERSONALITY & LOGIC:
-1. TONE: Sincere and natural. Speak like a real person, not an AI or a formal guide.
+1. TONE: Sincere and natural.
 2. PERSONAL CONNECTION: Frequently ask the User about their feelings, day, or opinions to keep the conversation engaging.
-3. JOB LIMIT: You work as a Tour Guide, but DO NOT talk about your job unless the User explicitly asks about it. Focus on building a friendship instead.
+3. JOB LIMIT: You work as a Tour Guide, but DO NOT talk about your job unless the User explicitly asks về nó.
 4. CONCISENESS: STRICTLY 1-3 sentences per response.
 5. CLOSING: Use gentle interactive tags like "...ạ", "...nhé", "...đúng không ạ?".`;
   }
@@ -168,8 +161,7 @@ PERSONALITY & LOGIC:
   return `${topicInstruction}
 
 STRICT FORMAT: 
-Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Briefly summarize user input in ${targetLangName}]
-`;
+Vietnamese_Text | ${targetLangName}_Translation | USER_TRANSLATION: [Briefly summarize user input in ${targetLangName}]`;
 };
 
 const punctuateText = async (rawText: string) => {
@@ -201,35 +193,47 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<any>(null);
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef(new Audio());
+
+  const userString = localStorage.getItem('user');
+  const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
+  const userName = user.name || 'Guest';
+  const userPronoun = user.gender === 'female' ? 'Chị' : 'Anh';
 
   const THU_IMAGE_URL = "https://drive.google.com/thumbnail?id=13zY8mO7D09A_Xw_R9_C-oO1G_O8J_oX_&sz=w800";
   const t = getTranslations(topic)[selectedLang];
 
+  const createChunks = (str: string, max = 180) => {
+    const chunks = [];
+    let tempStr = str;
+    while (tempStr.length > 0) {
+      if (tempStr.length <= max) { chunks.push(tempStr); break; }
+      let cutAt = tempStr.lastIndexOf('.', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+      if (cutAt === -1) cutAt = max;
+      chunks.push(tempStr.slice(0, cutAt + 1).trim());
+      tempStr = tempStr.slice(cutAt + 1).trim();
+    }
+    return chunks;
+  };
+
   const speakWord = useCallback(async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
-    if (currentAudioRef.current) currentAudioRef.current.pause();
 
     const viPart = text.split('|')[0].trim().replace(/[*#]/g, '');
-    const segments = viPart.split(/([.!?])\s/).reduce((acc: string[], cur, i, arr) => {
-        if (i % 2 === 0) {
-            const combined = (cur + (arr[i+1] || "")).trim();
-            if (combined) acc.push(combined);
-        }
-        return acc;
-    }, []);
+    const chunks = createChunks(viPart);
 
     try {
-        for (const segment of segments) {
+        for (const chunk of chunks) {
             await new Promise<void>((resolve) => {
-                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-                const audio = new Audio(url);
-                audio.playbackRate = playbackSpeed;
-                currentAudioRef.current = audio;
-                audio.onended = () => resolve();
-                audio.onerror = () => resolve();
-                audio.play().catch(() => resolve());
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+                audioRef.current.src = url;
+                audioRef.current.playbackRate = playbackSpeed;
+                audioRef.current.onended = () => resolve();
+                audioRef.current.onerror = () => resolve();
+                audioRef.current.play().catch(() => resolve());
             });
         }
     } finally {
@@ -257,7 +261,7 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
                 parts: [{ text: (m.text || "").split('|')[0].trim() }]
             })),
             config: { 
-                systemInstruction: getSystemPrompt(t.systemPromptLang, topic) 
+                systemInstruction: getSystemPrompt(t.systemPromptLang, userName, userPronoun, topic) 
             }
         });
         
@@ -286,12 +290,10 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
         setIsThinking(false);
         isProcessingRef.current = false;
     }
-  }, [messages, t.systemPromptLang, topic, speakWord]);
+  }, [messages, t.systemPromptLang, userName, userPronoun, topic, speakWord]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
-  useEffect(() => {
-    handleSendMessageRef.current = handleSendMessage;
-  });
+  useEffect(() => { handleSendMessageRef.current = handleSendMessage; });
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -300,8 +302,9 @@ export const AInewfriendThu: React.FC<{ onBack?: () => void, topic?: string | nu
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'vi-VN';
-      recognition.onstart = () => setIsRecording(true);
+      recognition.onstart = () => { setIsRecording(true); isProcessingRef.current = false; };
       recognition.onresult = (event: any) => {
+        if (isProcessingRef.current) return;
         const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
         setUserInput(currentTranscript);
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
