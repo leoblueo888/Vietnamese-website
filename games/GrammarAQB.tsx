@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Languages, Zap, ShieldAlert, MapPin, Clock, Cpu, Volume2, ChevronDown, Construction, Info, Sun, Moon, Play, CheckSquare, XSquare, Loader2, Users, Maximize, Minimize } from 'lucide-react';
 
@@ -179,11 +178,26 @@ export const GrammarAQB: React.FC = () => {
     time: getActiveData('time'),
   };
 
-  const speakWithGoogleTTS = useCallback((text: string) => {
+  // --- HÀM SPEECH SYNTHESIS MỚI ---
+  const speakWithWebSpeech = useCallback((text: string) => {
     if (!text) return;
-    const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=vi&client=tw-ob`);
-    setIsSpeaking(true);
-    audio.play().catch(() => {}).finally(() => { audio.onended = () => setIsSpeaking(false); });
+    
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    utterance.rate = 0.9;
+
+    const voices = window.speechSynthesis.getVoices();
+    const viVoice = voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) || 
+                    voices.find(v => v.lang.includes('vi'));
+    if (viVoice) utterance.voice = viVoice;
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
   }, []);
 
   useEffect(() => {
@@ -286,7 +300,7 @@ export const GrammarAQB: React.FC = () => {
     return (
       <div className="relative group/word inline-flex items-center">
         <div className={`aqb-word-item flex items-center gap-1 transition-all duration-300 hover:scale-105 ${colorClass} ${decorationClass} px-2 landscape:px-4 py-1 rounded-lg relative z-20 whitespace-nowrap font-black`}>
-          <span onClick={() => speakWithGoogleTTS(text)} className="cursor-pointer">{text}</span>
+          <span onClick={() => speakWithWebSpeech(text)} className="cursor-pointer">{text}</span>
           {children}
           {isMain && <span className={`absolute -inset-1 blur-sm rounded-lg -z-10 group-hover/word:bg-white/10 transition-all ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'}`}></span>}
         </div>
@@ -359,8 +373,8 @@ export const GrammarAQB: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 landscape:gap-4">
-              <button className={`aqb-listen-btn flex items-center gap-2 landscape:gap-3 px-4 landscape:px-8 py-2 landscape:py-3 rounded-xl font-black uppercase text-[10px] landscape:text-[11px] transition-all active:scale-95 ${theme === 'dark' ? 'bg-slate-800 text-cyan-400 border border-cyan-500/30' : 'bg-slate-100 text-cyan-700'}`} onClick={() => speakWithGoogleTTS(getFullSentenceVi())}>
-                <Volume2 className="w-4 h-4" /> <span className="hidden landscape:inline">{t.listen}</span>
+              <button className={`aqb-listen-btn flex items-center gap-2 landscape:gap-3 px-4 landscape:px-8 py-2 landscape:py-3 rounded-xl font-black uppercase text-[10px] landscape:text-[11px] transition-all active:scale-95 ${theme === 'dark' ? 'bg-slate-800 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500 hover:text-slate-950' : 'bg-slate-100 text-cyan-700 hover:bg-cyan-600 hover:text-white'}`} onClick={() => speakWithWebSpeech(getFullSentenceVi())}>
+                {isSpeaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} <span className="hidden landscape:inline">{t.listen}</span>
               </button>
               <div className={`aqb-q-selector flex rounded-xl p-1 border ${theme === 'dark' ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                  <span className="hidden landscape:block px-4 py-2 text-[10px] font-black text-cyan-500 self-center">{t.qWord}</span>
@@ -471,8 +485,6 @@ export const GrammarAQB: React.FC = () => {
               const isDisabled = !isComplexQ && activeQ.hide === m.hideOn;
               const isToggledOff = m.toggle && !visibleComponents[m.key as keyof typeof visibleComponents];
               const activeData = getActiveData(m.key);
-              const targetLang = (lang as string).toLowerCase() as 'en' | 'ru';
-              const displayId = (activeData as any)[targetLang] || (activeData as any).en;
               const Icon = m.icon;
 
               return (
@@ -490,82 +502,36 @@ export const GrammarAQB: React.FC = () => {
                     {loadingSlots[m.key as keyof typeof loadingSlots] && <Loader2 className="w-3 h-3 animate-spin text-cyan-500" />}
                   </div>
                   <div className={`flex flex-col gap-2 ${isDisabled ? 'pointer-events-none grayscale' : ''}`}>
-                    <div className="relative group/select">
-                      <div className={`text-[10px] font-black px-3 py-2.5 rounded-xl border-2 flex items-center justify-between transition-all ${m.key === 'subject' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-lg shadow-cyan-500/10' : 'bg-slate-950 text-white border-slate-800 group-hover:border-slate-700'}`}>
-                        <span className="truncate">{activeData.vi.toUpperCase()}</span>
-                        <ChevronDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
-                      </div>
-                      <select value={selections[m.key as keyof typeof selections]} onChange={(e) => setSelections(s => ({...s, [m.key]: parseInt(e.target.value)}))} className="absolute inset-0 opacity-0 cursor-pointer w-full">
-                        {m.key === 'subject' 
-                          ? subjectVersions.map((v, i) => <option key={i} value={i} className="text-black">{v.vi}</option>) 
-                          : (SENTENCE_DATA as any)[m.key + 's'].map((v: any, i: any) => <option key={i} value={i} className="text-black">{v.vi}</option>)}
-                      </select>
+                    <div className={`text-[10px] font-black px-3 py-3 rounded-xl border flex items-center justify-between ${m.key === 'subject' ? 'bg-cyan-500 text-slate-950 border-cyan-400' : (theme === 'dark' ? 'bg-slate-950 text-white border-slate-800' : 'bg-white text-slate-900 border-slate-200')}`}>
+                       <span className="truncate">{activeData.vi.toUpperCase()}</span>
+                       <ChevronDown className="w-3 h-3 opacity-40" />
                     </div>
-                    <div className="flex items-center gap-1.5 px-1 overflow-hidden">
-                      <span className="text-[8px] font-black text-cyan-500/60 uppercase whitespace-nowrap">{t.idLabel}</span>
-                      <span className="text-[8px] font-bold text-slate-500 truncate italic">{displayId}</span>
-                    </div>
+                    <select value={selections[m.key as keyof typeof selections]} onChange={(e) => setSelections(s => ({...s, [m.key]: parseInt(e.target.value)}))} className="absolute inset-0 opacity-0 cursor-pointer w-full">
+                       {m.key === 'subject' 
+                        ? subjectVersions.map((v, i) => <option key={i} value={i} className="text-black font-bold">{v.vi}</option>) 
+                        : (SENTENCE_DATA as any)[m.key + 's'].map((v: any, i: any) => <option key={i} value={i} className="text-black font-bold">{v.vi}</option>)}
+                    </select>
+                    <input type="text" value={(inputs as any)[m.key]} onChange={(e) => setInputs(i => ({...i, [m.key]: e.target.value}))} placeholder={t.custom} className={`bg-transparent border-b text-[9px] p-1 outline-none transition-colors ${theme === 'dark' ? 'border-slate-800 focus:border-cyan-500 text-slate-400' : 'border-slate-200 focus:border-cyan-600 text-slate-600'}`} />
                   </div>
-                  <input type="text" value={(inputs as any)[m.key]} onChange={(e) => setInputs(i => ({...i, [m.key]: e.target.value}))} placeholder={t.custom} className="bg-transparent border-b border-slate-800 text-[9px] p-1 focus:border-cyan-500 outline-none text-slate-400 transition-colors" />
                 </div>
               );
             })}
           </div>
+
+          <footer className={`p-4 landscape:px-8 py-3 border-t flex justify-between items-center text-[8px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'bg-slate-950/80 border-slate-800/50 text-slate-600' : 'bg-white border-slate-100 text-slate-400'}`}>
+             <div className="flex items-center gap-6">
+                <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> SUBJECT</span>
+                <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> QUESTION</span>
+                <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-slate-500" /> CONTEXT</span>
+             </div>
+             <div className="flex items-center gap-3">
+                <button onClick={toggleFullscreen} className="hover:text-cyan-500 transition-colors">
+                   {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+                </button>
+             </div>
+          </footer>
         </div>
       </div>
-      <button 
-        onClick={toggleFullscreen}
-        className="absolute bottom-1 left-1 z-50 p-1.5 bg-black/10 text-white/50 rounded-full backdrop-blur-sm shadow-md opacity-40 hover:opacity-100 transition-all"
-        aria-label="Toggle fullscreen"
-      >
-        {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-      </button>
-       <style>{`
-        @media (orientation: landscape) and (max-height: 500px) {
-          .aqb-sentence-wrapper { transform: scale(0.91); max-width: 90vw; margin-left: auto; margin-right: auto; }
-          .aqb-sentence { flex-wrap: nowrap !important; white-space: nowrap; font-size: clamp(0.8rem, 3.5vh, 1.5rem); }
-          .aqb-header { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-          .aqb-control-module { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
-        }
-        .aqb-game-root:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
-        .aqb-game-root:fullscreen .aqb-game-wrapper {
-            aspect-ratio: 16 / 9;
-            width: auto; height: auto;
-            max-width: 100%; max-height: 100%;
-        }
-        .aqb-game-root:fullscreen .aqb-game-wrapper { overflow: hidden; }
-
-        /* VMIN Scaling for Fullscreen */
-        .aqb-game-root:fullscreen .aqb-header { padding: 1.5vmin; border-bottom-width: 0.2vmin; }
-        .aqb-game-root:fullscreen .aqb-theme-btn { padding: 1.2vmin; border-radius: 1vmin; }
-        .aqb-game-root:fullscreen .aqb-theme-icon { width: 3vmin; height: 3vmin; }
-        .aqb-game-root:fullscreen .aqb-title { font-size: 1.8vmin; }
-        .aqb-game-root:fullscreen .aqb-slogan { font-size: 1.2vmin; }
-        .aqb-game-root:fullscreen .aqb-listen-btn { padding: 1.5vmin 3vmin; border-radius: 1vmin; font-size: 1.2vmin; gap: 1vmin; }
-        .aqb-game-root:fullscreen .aqb-listen-btn svg { width: 2vmin; height: 2vmin; }
-        .aqb-game-root:fullscreen .aqb-q-selector { padding: 0.5vmin; border-radius: 1vmin; }
-        .aqb-game-root:fullscreen .aqb-q-selector span { font-size: 1.2vmin; padding: 1vmin 1.5vmin; }
-        .aqb-game-root:fullscreen .aqb-q-selector select { font-size: 1.2vmin; }
-        .aqb-game-root:fullscreen .aqb-body { flex-direction: column; }
-        .aqb-game-root:fullscreen .aqb-sidebar { display: none; }
-        .aqb-game-root:fullscreen .aqb-main { width: 100%; }
-        .aqb-game-root:fullscreen .aqb-sentence-wrapper { transform: scale(1) !important; max-width: 100%; }
-        .aqb-game-root:fullscreen .aqb-sentence { flex-wrap: nowrap !important; font-size: 7.5vmin; gap: 2.5vmin; margin-bottom: 2vmin; }
-        .aqb-game-root:fullscreen .aqb-word-item { padding: 0.5vmin 2vmin; border-radius: 1.5vmin; }
-        .aqb-game-root:fullscreen .aqb-tooltip-wrapper { width: 30vmin; }
-        .aqb-game-root:fullscreen .aqb-tooltip-box { padding: 2vmin; border-radius: 2vmin; }
-        .aqb-game-root:fullscreen .aqb-tooltip-icon { width: 4vmin; height: 4vmin; }
-        .aqb-game-root:fullscreen .aqb-tooltip-text { font-size: 1.8vmin; }
-        .aqb-game-root:fullscreen .aqb-tooltip-arrow { width: 2vmin; height: 2vmin; }
-        .aqb-game-root:fullscreen .aqb-translation-bar { padding: 1.5vmin 3vmin; border-radius: 9999px; }
-        .aqb-game-root:fullscreen .aqb-translation-text { font-size: 2vmin; }
-        .aqb-game-root:fullscreen .aqb-controls-grid { display: grid; border-top-width: 0.2vmin; }
-        .aqb-game-root:fullscreen .aqb-control-module { gap: 1.5vmin; padding: 1.5vmin; border-right-width: 0.1vmin; }
-        .aqb-game-root:fullscreen .aqb-control-module label { font-size: 1.1vmin; }
-        .aqb-game-root:fullscreen .aqb-control-module .group\/select div { font-size: 1.2vmin; padding: 1.2vmin; }
-        .aqb-game-root:fullscreen .aqb-control-module input { font-size: 1.1vmin; padding: 0.8vmin; }
-        .aqb-game-root:fullscreen .aqb-control-module span { font-size: 1vmin; }
-      `}</style>
     </div>
   );
 };
