@@ -352,23 +352,26 @@ const gameHTML = `
         if (!text) return;
         
         // Dừng âm thanh đang phát
-        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
         
-        // Clean text
-        const cleanText = text.replace(/[*_`#]/g, '').trim();
+        // Clean text - escape backtick trong regex
+        const cleanText = text.replace(/[*_\`#]/g, '').trim();
+        if (!cleanText) return;
         
         // Dùng proxy API thay vì Google trực tiếp
-        const url = \`/api/tts?text=\${encodeURIComponent(cleanText)}&lang=vi\`;
+        const url = '/api/tts?text=' + encodeURIComponent(cleanText) + '&lang=vi';
         const audio = new Audio(url);
         
-        audio.onerror = () => {
+        audio.onerror = function() {
             // Fallback khi lỗi API
             const fallback = new SpeechSynthesisUtterance(cleanText);
             fallback.lang = 'vi-VN';
             window.speechSynthesis.speak(fallback);
         };
         
-        audio.play().catch(() => {
+        audio.play().catch(function() {
             // Fallback khi play lỗi
             const fallback = new SpeechSynthesisUtterance(cleanText);
             fallback.lang = 'vi-VN';
@@ -473,7 +476,9 @@ const gameHTML = `
 
     function selectOption(opt) {
         selectedOption = opt;
-        document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.opt-btn').forEach(function(b) { 
+            b.classList.remove('selected'); 
+        });
         document.getElementById('opt-' + opt).classList.add('selected');
     }
 
@@ -518,7 +523,7 @@ const gameHTML = `
     }
 
     function updateUILanguage() {
-        const t = translations[selectedLang];
+        var t = translations[selectedLang];
         document.getElementById('ui-title').innerText = t.title;
         document.getElementById('ui-level-label').innerText = t.level;
         document.getElementById('ui-match-label').innerText = t.matches;
@@ -527,7 +532,7 @@ const gameHTML = `
     }
 
     function initLevel() {
-        const config = levels[currentLevel];
+        var config = levels[currentLevel];
         score = 0;
         internalLevelStep = 0;
         levelDisplay.innerText = currentLevel;
@@ -542,8 +547,8 @@ const gameHTML = `
     }
 
     function changeRound(direction) {
-        const config = levels[currentLevel];
-        let newScore = score + (direction * (currentTargetsData.length || 1));
+        var config = levels[currentLevel];
+        var newScore = score + (direction * (currentTargetsData.length || 1));
         if (newScore < 0) newScore = 0;
         if (newScore > config.total) {
             showLevelModal();
@@ -566,22 +571,26 @@ const gameHTML = `
         targetsContainer.innerHTML = '';
         matchedInBatch = [];
         currentTargetsData = [];
-        const config = levels[currentLevel];
+        var config = levels[currentLevel];
         
         if (config.sequence) {
-            const targetVal = config.sequence[internalLevelStep];
-            const found = numberData.find(d => d.num === targetVal);
+            var targetVal = config.sequence[internalLevelStep];
+            var found = numberData.find(function(d) { 
+                return d.num === targetVal; 
+            });
             if(found) currentTargetsData.push(found);
         } else {
-            const shuffled = [...numberData].sort(() => Math.random() - 0.5);
-            for(let i=0; i<Math.min(config.targets, shuffled.length); i++) {
+            var shuffled = [...numberData].sort(function() { 
+                return Math.random() - 0.5; 
+            });
+            for(var i=0; i<Math.min(config.targets, shuffled.length); i++) {
                 currentTargetsData.push(shuffled[i]);
             }
         }
 
-        const isCompact = currentTargetsData.length >= 3;
-        currentTargetsData.forEach(data => {
-            const card = document.createElement('div');
+        var isCompact = currentTargetsData.length >= 3;
+        currentTargetsData.forEach(function(data) {
+            var card = document.createElement('div');
             card.className = 'target-card ' + (isCompact ? 'compact' : '');
             card.id = 'target-' + data.num;
             card.innerHTML = '<span class="number-text">' + data.num + '</span><div class="drop-zone" data-num="' + data.num + '"><span class="text-[10px] font-black text-blue-300 uppercase">' + translations[selectedLang].drop + '</span></div>';
@@ -591,21 +600,23 @@ const gameHTML = `
     }
 
     function spawnWordsForBatch() {
-        activeWords.forEach(w => w.el.remove());
+        activeWords.forEach(function(w) { 
+            w.el.remove(); 
+        });
         activeWords = [];
-        const config = levels[currentLevel];
+        var config = levels[currentLevel];
         
-        currentTargetsData.forEach(data => {
-            const el = document.createElement('div');
+        currentTargetsData.forEach(function(data) {
+            var el = document.createElement('div');
             el.className = "floating-word";
             el.innerHTML = '<div class="word-main">' + data.word + '</div><div class="word-sub">' + data[selectedLang] + '</div>';
             playArea.appendChild(el);
             
-            const rect = el.getBoundingClientRect();
-            const width = rect.width || 160;
-            const height = rect.height || 70;
+            var rect = el.getBoundingClientRect();
+            var width = rect.width || 160;
+            var height = rect.height || 70;
 
-            const wordObj = {
+            var wordObj = {
                 el: el, num: data.num,
                 x: Math.random() * (window.innerWidth - width),
                 y: Math.random() * (window.innerHeight - 300) + 150,
@@ -619,39 +630,42 @@ const gameHTML = `
     }
 
     function setupDrag(wordObj) {
-        const el = wordObj.el;
-        let startX, startY;
+        var el = wordObj.el;
+        var startX, startY;
 
-        const onMove = (e) => {
+        function onMove(e) {
             if (!wordObj.isDragging) return;
             if (e.cancelable) e.preventDefault();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            var clientY = e.touches ? e.touches[0].clientY : e.clientY;
             wordObj.x = clientX - startX;
             wordObj.y = clientY - startY;
             el.style.transform = 'translate3d(' + wordObj.x + 'px, ' + wordObj.y + 'px, 0)';
             
-            const wordRect = el.getBoundingClientRect();
-            document.querySelectorAll('.drop-zone').forEach(zone => {
-                const zr = zone.getBoundingClientRect();
-                const overlap = Math.max(0, Math.min(wordRect.right, zr.right) - Math.max(wordRect.left, zr.left)) * Math.max(0, Math.min(wordRect.bottom, zr.bottom) - Math.max(wordRect.top, zr.top));
-                if (overlap > (zr.width * zr.height * 0.4)) zone.classList.add('active'); 
-                else zone.classList.remove('active');
+            var wordRect = el.getBoundingClientRect();
+            document.querySelectorAll('.drop-zone').forEach(function(zone) {
+                var zr = zone.getBoundingClientRect();
+                var overlap = Math.max(0, Math.min(wordRect.right, zr.right) - Math.max(wordRect.left, zr.left)) * Math.max(0, Math.min(wordRect.bottom, zr.bottom) - Math.max(wordRect.top, zr.top));
+                if (overlap > (zr.width * zr.height * 0.4)) {
+                    zone.classList.add('active');
+                } else {
+                    zone.classList.remove('active');
+                }
             });
-        };
+        }
 
-        const onEnd = (e) => {
+        function onEnd(e) {
             if (!wordObj.isDragging) return;
             wordObj.isDragging = false;
             el.style.zIndex = 50;
-            const wordRect = el.getBoundingClientRect();
-            document.querySelectorAll('.drop-zone').forEach(zone => {
-                const zr = zone.getBoundingClientRect();
-                const overlap = Math.max(0, Math.min(wordRect.right, zr.right) - Math.max(wordRect.left, zr.left)) * Math.max(0, Math.min(wordRect.bottom, zr.bottom) - Math.max(wordRect.top, zr.top));
+            var wordRect = el.getBoundingClientRect();
+            document.querySelectorAll('.drop-zone').forEach(function(zone) {
+                var zr = zone.getBoundingClientRect();
+                var overlap = Math.max(0, Math.min(wordRect.right, zr.right) - Math.max(wordRect.left, zr.left)) * Math.max(0, Math.min(wordRect.bottom, zr.bottom) - Math.max(wordRect.top, zr.top));
                 zone.classList.remove('active');
                 if (overlap > (zr.width * zr.height * 0.4) && String(zone.dataset.num) === String(wordObj.num)) {
                     dropSfx.currentTime = 0;
-                    dropSfx.play().catch(() => {});
+                    dropSfx.play().catch(function() {});
                     handleCorrect(wordObj);
                 }
             });
@@ -659,20 +673,20 @@ const gameHTML = `
             window.removeEventListener('mouseup', onEnd);
             window.removeEventListener('touchmove', onMove);
             window.removeEventListener('touchend', onEnd);
-        };
+        }
 
-        const onStart = (e) => {
+        function onStart(e) {
             wordObj.isDragging = true;
             el.style.zIndex = 1000;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            var clientY = e.touches ? e.touches[0].clientY : e.clientY;
             startX = clientX - wordObj.x;
             startY = clientY - wordObj.y;
             window.addEventListener('mousemove', onMove, { passive: false });
             window.addEventListener('mouseup', onEnd);
             window.addEventListener('touchmove', onMove, { passive: false });
             window.addEventListener('touchend', onEnd);
-        };
+        }
 
         el.addEventListener('mousedown', onStart);
         el.addEventListener('touchstart', onStart, { passive: false });
@@ -682,32 +696,44 @@ const gameHTML = `
         score++;
         updateProgress();
         matchedInBatch.push(wordObj.data);
-        const card = document.getElementById('target-' + wordObj.num);
+        var card = document.getElementById('target-' + wordObj.num);
         if(card) card.classList.add('completed');
         
-        // PHÁT ÂM THANH KHI DROP ĐÚNG (ĐÃ SỬA)
+        // PHÁT ÂM THANH KHI DROP ĐÚNG
         speakVietnamese(wordObj.data.word);
         
         wordObj.el.remove();
-        activeWords = activeWords.filter(w => w !== wordObj);
+        activeWords = activeWords.filter(function(w) { 
+            return w !== wordObj; 
+        });
         if (matchedInBatch.length === currentTargetsData.length) {
-            const config = levels[currentLevel];
+            var config = levels[currentLevel];
             confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#1e40af', '#3b82f6', '#ffffff'] });
             if (config.sequence) {
                  internalLevelStep++;
-                 if (score >= config.total) showLevelModal();
-                 else setTimeout(() => spawnTargets(), 1200);
+                 if (score >= config.total) {
+                     showLevelModal();
+                 } else {
+                     setTimeout(function() { 
+                         spawnTargets(); 
+                     }, 1200);
+                 }
             } else {
-                 if (score >= config.total) showLevelModal();
-                 else setTimeout(() => spawnTargets(), 1200);
+                 if (score >= config.total) {
+                     showLevelModal();
+                 } else {
+                     setTimeout(function() { 
+                         spawnTargets(); 
+                     }, 1200);
+                 }
             }
         }
     }
 
     function showCongratsOverlay(dataList) {
         congratsList.innerHTML = '';
-        dataList.forEach(data => {
-            const item = document.createElement('div');
+        dataList.forEach(function(data) {
+            var item = document.createElement('div');
             item.className = "flex items-center justify-between p-4 bg-blue-50 rounded-2xl";
             item.innerHTML = '<div><div class="text-3xl font-black text-blue-800">' + data.num + ': ' + data.word + '</div><div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">' + data[selectedLang] + '</div></div><div class="mic-btn" onclick="speakVietnamese(\'' + data.word + '\')">🔊</div>';
             congratsList.appendChild(item);
@@ -715,13 +741,17 @@ const gameHTML = `
         matchOverlay.style.display = 'flex';
     }
 
-    closeOverlayBtn.onclick = () => {
+    closeOverlayBtn.onclick = function() {
         matchOverlay.style.display = 'none';
-        if (score >= levels[currentLevel].total) showLevelModal(); else spawnTargets();
+        if (score >= levels[currentLevel].total) {
+            showLevelModal();
+        } else {
+            spawnTargets();
+        }
     };
 
     function showLevelModal() {
-        const t = translations[selectedLang];
+        var t = translations[selectedLang];
         modal.classList.remove('hidden');
         if (currentLevel < MAX_LEVEL) {
             modalTitle.innerText = t.lvlComplete;
@@ -736,8 +766,8 @@ const gameHTML = `
     }
 
     function animate() {
-        const area = playArea.getBoundingClientRect();
-        activeWords.forEach(word => {
+        var area = playArea.getBoundingClientRect();
+        activeWords.forEach(function(word) {
             if (!word.isDragging) {
                 word.x += word.dx; 
                 word.y += word.dy;
@@ -749,7 +779,7 @@ const gameHTML = `
         animationFrame = requestAnimationFrame(animate);
     }
 
-    modalBtn.onclick = () => {
+    modalBtn.onclick = function() {
         modal.classList.add('hidden');
         if (currentLevel < MAX_LEVEL) {
             currentLevel++;
@@ -759,9 +789,9 @@ const gameHTML = `
         }
     };
     
-    window.addEventListener('resize', () => {
-        activeWords.forEach(word => {
-            const rect = word.el.getBoundingClientRect();
+    window.addEventListener('resize', function() {
+        activeWords.forEach(function(word) {
+            var rect = word.el.getBoundingClientRect();
             word.width = rect.width;
             word.height = rect.height;
             if (word.x > window.innerWidth - word.width) word.x = window.innerWidth - word.width;
@@ -798,8 +828,8 @@ export const GameVocabularyNumbers: React.FC = () => {
         const elem = gameWrapperRef.current;
         if (elem) {
             if (!document.fullscreenElement) {
-                elem.requestFullscreen().catch(err => {
-                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                elem.requestFullscreen().catch(function(err) {
+                    alert('Error attempting to enable full-screen mode: ' + err.message);
                 });
             } else {
                 document.exitFullscreen();
