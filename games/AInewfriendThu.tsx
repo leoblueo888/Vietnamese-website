@@ -91,6 +91,7 @@ const DICTIONARY = {
   "quen": { EN: "to know", RU: "znat'" }
 };
 
+
 const getTranslations = (topic?: string | null) => {
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : { name: 'Guest', gender: 'male' };
