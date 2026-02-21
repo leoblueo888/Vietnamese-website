@@ -96,7 +96,7 @@ const TAB_CONFIG = [
   { id: 'cvc', label: 'C1 + Vowel + C2', shortLabel: 'C + V + C' }
 ];
 
-const ANALYZE_MODEL = "gemini-2.0-flash";
+const ANALYZE_MODEL = "gemini-2.5-flash";
 
 const checkVietnameseValidity = (prefix: any, vowelItem: any, suffix: any, activeTab: any) => {
   const vowelChar = vowelItem.char; 
