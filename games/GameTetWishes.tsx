@@ -54,11 +54,21 @@ export const GameTetWishes: React.FC = () => {
 
   const t = TRANSLATIONS[lang];
 
+  // Hàm phát âm thanh sử dụng Web Speech API (Thay thế Google TTS bị chặn)
   const playAudio = (text: string, languageCode: string) => {
+    // Dừng mọi âm thanh đang phát trước đó
+    window.speechSynthesis.cancel();
+
     const cleanText = text.replace(/^\d+\.\s*/, '');
-    const utterance = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=${languageCode}&client=tw-ob`;
-    const audio = new Audio(utterance);
-    audio.play().catch(e => console.error("Audio play error:", e));
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Ánh xạ mã ngôn ngữ
+    if (languageCode === 'vi') utterance.lang = 'vi-VN';
+    else if (languageCode === 'en') utterance.lang = 'en-US';
+    else if (languageCode === 'ru') utterance.lang = 'ru-RU';
+
+    utterance.rate = 0.9; // Tốc độ nói vừa phải để dễ nghe
+    window.speechSynthesis.speak(utterance);
   };
 
   const handleSelect = (index: number) => {
@@ -145,7 +155,7 @@ export const GameTetWishes: React.FC = () => {
     <div className="w-full h-full bg-[#fff7ed] flex items-center justify-center p-2 md:p-4 overflow-y-auto font-sans text-slate-700">
       <div className="relative w-full max-w-[1000px] min-h-[600px] h-auto md:aspect-video bg-white/70 backdrop-blur-2xl rounded-[1.5rem] md:rounded-[2rem] shadow-[0_20px_60px_rgba(251,146,60,0.15)] flex flex-col border border-orange-50 overflow-hidden">
         
-        {/* Header - Responsive height and layout */}
+        {/* Header */}
         <header className="relative z-10 h-auto md:h-36 flex flex-col md:flex-row items-center justify-between px-6 md:px-10 py-6 md:py-0 border-b border-orange-100 bg-white/50 gap-4">
           <div className="flex items-center gap-4 md:gap-6">
             <CustomIcon sizeClass="w-16 h-16 md:w-20 md:h-20" />
@@ -170,7 +180,7 @@ export const GameTetWishes: React.FC = () => {
           </div>
         </header>
 
-        {/* Main Content Area - Responsive padding */}
+        {/* Main Content Area */}
         <main className="relative z-30 flex-1 flex flex-col justify-center px-6 md:px-20 py-8 md:py-4 gap-6">
           
           {/* Interface Lang Selection */}
@@ -228,7 +238,7 @@ export const GameTetWishes: React.FC = () => {
             <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-orange-200 to-transparent"></div>
           </div>
 
-          {/* Vietnamese Interface - Responsive text sizes */}
+          {/* Vietnamese Interface */}
           <div className="relative z-40">
             <div className="flex items-center gap-2 mb-2 ml-1">
               <Radio size={10} className="text-orange-500" />
@@ -276,7 +286,7 @@ export const GameTetWishes: React.FC = () => {
           </div>
         </main>
 
-        {/* Footer Area - Hide complex parts on tiny screens if needed */}
+        {/* Footer Area */}
         <footer className="relative z-10 h-16 md:h-20 bg-white/60 flex items-center justify-between px-6 md:px-10 text-[9px] md:text-[11px] font-black font-mono text-orange-600 uppercase tracking-[0.2em] md:tracking-[0.5em] border-t border-orange-100">
           <div className="flex items-center gap-3">
              <Star size={12} fill="currentColor" className="text-orange-400" /> 
