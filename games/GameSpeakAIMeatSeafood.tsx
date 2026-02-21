@@ -3,6 +3,7 @@ import { Mic, MicOff, Send, Volume2, Play, Gauge, Maximize, Minimize, Globe, Dow
 import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
+
 // --- DICTIONARY DATA ---
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "hải sản": { EN: "seafood", type: "Noun" },
