@@ -79,7 +79,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
 
   const t = LANGUAGES[selectedLang];
 
-  // --- 1+2. CHUNK LOGIC (180 CHARS & SMART CUT) ---
+  // --- CHUNK LOGIC (180 CHARS & SMART CUT) ---
   const createChunks = (str: string, max = 180) => {
     const chunks = [];
     let tempStr = str;
@@ -95,34 +95,57 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     return chunks;
   };
 
-  // --- 3+4. ASYNC QUEUE & FALLBACK ---
+  // --- CLEAN TEXT FUNCTION ---
+  const cleanText = (text: string) => {
+    return text
+      .replace(/(\d+)k\b/g, '$1 nghìn')
+      .replace(/(\d+)\.000/g, '$1 nghìn')
+      .replace(/[*_`#|]/g, '')  // Loại bỏ markdown
+      .replace(/\s+/g, ' ')      // Chuẩn hóa khoảng trắng
+      .replace(/[✨🎵🔊🔔❌✅⭐🦀]/g, '') // Loại bỏ emoji
+      .trim();
+  };
+
+  // --- SPEAK FUNCTION WITH PROXY API ---
   const speak = useCallback(async (fullText: string, msgId: string | null = null) => {
     if (!fullText) return;
     if (msgId) setActiveVoiceId(msgId);
+    
+    // Dừng mọi âm thanh đang phát
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     audioRef.current.pause();
 
     const parts = fullText.split('|');
-    const vietnameseToRead = parts.filter((_, i) => i % 2 === 0).join(' ')
-      .replace(/(\d+)k\b/g, '$1 nghìn').replace(/(\d+)\.000/g, '$1 nghìn').replace(/[*#]/g, '').trim();
+    const vietnameseToRead = parts.filter((_, i) => i % 2 === 0).join(' ');
+    const cleanedText = cleanText(vietnameseToRead);
 
-    const chunks = createChunks(vietnameseToRead);
+    if (!cleanedText) {
+      setActiveVoiceId(null);
+      return;
+    }
+
+    const chunks = createChunks(cleanedText);
     
     for (const chunk of chunks) {
       await new Promise<void>((resolve) => {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+        // Dùng API proxy (quan trọng!)
+        const url = `/api/tts?text=${encodeURIComponent(chunk)}&lang=vi`;
         audioRef.current.src = url;
         audioRef.current.playbackRate = speechRate;
+        
         audioRef.current.onended = () => resolve();
         audioRef.current.onerror = () => {
           const fb = new SpeechSynthesisUtterance(chunk);
           fb.lang = 'vi-VN';
+          fb.rate = speechRate;
           fb.onend = () => resolve();
           window.speechSynthesis.speak(fb);
         };
+        
         audioRef.current.play().catch(() => {
           const fb = new SpeechSynthesisUtterance(chunk);
           fb.lang = 'vi-VN';
+          fb.rate = speechRate;
           fb.onend = () => resolve();
           window.speechSynthesis.speak(fb);
         });
@@ -146,6 +169,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
           text += e.results[i][0].transcript;
         }
         setUserInput(text);
+        
         if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
         autoSendTimerRef.current = setTimeout(() => {
           if (text.trim()) {
@@ -157,7 +181,10 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
       recognition.onend = () => setIsRecording(false);
       recognitionRef.current = recognition;
     }
-  }, [messages]);
+    return () => { 
+      if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current); 
+    };
+  }, []); // Bỏ dependency messages
 
   // --- AI ENGINE (GEMINI-2.5-FLASH) ---
   const handleSendMessage = async (text: string) => {
@@ -183,7 +210,8 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
           systemInstruction: `Bạn tên là Thanh (25 tuổi), chuyên gia bán hải sản và thịt tươi sống.
           PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn. Xưng "Em" - gọi "Anh/Chị". Luôn dùng "Dạ", "ạ", "nha".
           FORMAT: Vietnamese sentence | ${t.systemPromptLang} translation.
-          At the end, add: USER_TRANSLATION: [Translation of user's last message]`
+          At the end, add: USER_TRANSLATION: [Translation of user's last message]
+          Important: Do not use markdown, emojis, or special characters in the Vietnamese part.`
         }
       });
 
@@ -198,16 +226,24 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
           return prev.map(m => m.id === userMsgId ? { ...m, translation: userTransValue } : m)
                      .concat({ role: 'ai', text: aiResponseFull, id: aiMsgId });
         });
+        
+        // Chỉ gọi speak 1 lần ở đây
         await speak(aiResponseFull, aiMsgId);
       }
-    } catch (e) { console.error(e); }
-    finally { setIsThinking(false); isProcessingRef.current = false; }
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      setIsThinking(false); 
+      isProcessingRef.current = false; 
+    }
   };
 
   const renderInteractiveText = (text: string) => {
+    const cleanDisplay = cleanText(text);
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
-    let remaining = text;
+    let remaining = cleanDisplay;
+    
     while (remaining.length > 0) {
       let match = null;
       for (const key of sortedKeys) {
@@ -259,7 +295,9 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     a.click();
   };
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { 
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
+  }, [messages]);
 
   if (gameState === 'start') {
     return (
@@ -275,7 +313,11 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
               </button>
             ))}
           </div>
-          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
+          <button onClick={() => { 
+            setGameState('playing'); 
+            setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); 
+            speak(t.welcome_msg, 'init'); 
+          }} className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
             <Play fill="white" /> {t.ui_start}
           </button>
         </div>
@@ -288,13 +330,20 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
       <div className="w-full h-full max-w-7xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
         <div className="h-[25vh] md:h-full md:w-1/3 bg-emerald-50/30 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-emerald-100 shrink-0 z-20">
           <div className="flex flex-row md:flex-col items-center gap-6">
-            <img src={character.avatarUrl} className="w-24 h-24 md:w-64 md:h-64 rounded-[2.5rem] border-4 border-white shadow-2xl object-cover" alt="Thanh" />
+            <div className="relative">
+              <img src={character.avatarUrl} className="w-24 h-24 md:w-64 md:h-64 rounded-[2.5rem] border-4 border-white shadow-2xl object-cover" alt="Thanh" />
+              {isThinking && <div className="absolute inset-0 bg-emerald-500/10 animate-pulse rounded-[2.5rem]" />}
+            </div>
             <div className="text-left md:text-center">
               <h2 className="text-2xl md:text-4xl font-black text-emerald-900 italic tracking-tighter">Thanh 🦀</h2>
               <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mt-1">{t.ui_status}</span>
             </div>
           </div>
-          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-100' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
+          <button 
+            onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} 
+            className={`w-16 h-16 md:w-28 md:h-28 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-100' : 'bg-emerald-700 hover:bg-emerald-800'}`}
+            disabled={isThinking}
+          >
             {isRecording ? <MicOff color="white" size={32} /> : <Mic color="white" size={32} />}
           </button>
         </div>
@@ -308,7 +357,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
             <div className="flex gap-3">
                <button onClick={handleDownload} className="p-2 text-slate-300 hover:text-emerald-600 transition-colors"><Download size={20}/></button>
                <button onClick={() => setSpeechRate(prev => prev === 1.0 ? 0.7 : 1.0)} className="bg-orange-50 text-orange-600 px-4 py-2 rounded-2xl font-black text-xs flex items-center gap-2">
-                 <Gauge size={16}/> {speechRate === 1.0 ? '100%' : '70%'}
+                 <Gauge size={16}/> {speechRate === 1.0 ? 'Normal' : 'Slow'}
                </button>
                <button onClick={toggleFullscreen} className="p-2 text-slate-300 hover:text-blue-600"><Maximize size={20}/></button>
             </div>
@@ -317,15 +366,26 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
           <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-emerald-50/5 custom-scrollbar">
             {messages.map((msg) => {
               const parts = msg.text.split('|');
-              const viText = parts.filter((_, i) => i % 2 === 0).join(' ').trim();
-              const transText = parts.filter((_, i) => i % 2 !== 0).join(' ').trim();
+              const viText = cleanText(parts.filter((_, i) => i % 2 === 0).join(' '));
+              const transText = cleanText(parts.filter((_, i) => i % 2 !== 0).join(' '));
               const isActive = activeVoiceId === msg.id;
+              
               return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
                   <div className={`max-w-[85%] p-6 rounded-[2.5rem] shadow-sm transition-all ${isActive ? 'ring-4 ring-emerald-100' : ''} ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-emerald-50 rounded-tl-none shadow-md'}`}>
                     <div className="flex items-start justify-between gap-6">
-                      <div className="text-lg font-bold leading-relaxed">{msg.role === 'ai' ? renderInteractiveText(viText) : viText}</div>
-                      {msg.role === 'ai' && <button onClick={() => speak(msg.text, msg.id)} className="opacity-30 hover:opacity-100 transition-opacity"><Volume2 size={22}/></button>}
+                      <div className="text-lg font-bold leading-relaxed">
+                        {msg.role === 'ai' ? renderInteractiveText(viText) : viText}
+                      </div>
+                      {msg.role === 'ai' && (
+                        <button 
+                          onClick={() => speak(msg.text, msg.id)} 
+                          className="opacity-30 hover:opacity-100 transition-opacity"
+                          disabled={activeVoiceId === msg.id}
+                        >
+                          <Volume2 size={22}/>
+                        </button>
+                      )}
                     </div>
                     {(transText || msg.translation) && (
                       <div className={`mt-4 pt-4 border-t text-xs italic font-medium ${msg.role === 'user' ? 'border-emerald-600 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>
@@ -336,12 +396,31 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
                 </div>
               );
             })}
+            {isThinking && (
+              <div className="text-[10px] font-black text-emerald-500 animate-pulse ml-4 italic uppercase tracking-widest">
+                Thanh đang cân hàng...
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
           <footer className="p-6 md:p-10 bg-white border-t flex gap-4 pb-12">
-            <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-emerald-50 transition-all shadow-inner" />
-            <button onClick={() => handleSendMessage(userInput)} className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl hover:bg-blue-700 transition-all"><Send size={24}/></button>
+            <input 
+              type="text" 
+              value={userInput} 
+              onChange={e => setUserInput(e.target.value)} 
+              onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} 
+              placeholder={t.ui_placeholder} 
+              className="flex-1 px-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-emerald-50 transition-all shadow-inner" 
+              disabled={isThinking}
+            />
+            <button 
+              onClick={() => handleSendMessage(userInput)} 
+              className="bg-blue-600 text-white px-10 rounded-[2rem] shadow-xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isThinking || !userInput.trim()}
+            >
+              <Send size={24}/>
+            </button>
           </footer>
         </div>
       </div>
