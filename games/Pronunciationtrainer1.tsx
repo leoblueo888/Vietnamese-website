@@ -161,6 +161,11 @@ export function Pronunciationtrainer1() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const visualizerTimerRef = useRef<number | null>(null);
+  
+  // --- AUDIO REFS ---
+  const audioRef = useRef(new Audio());
+  const audioQueueRef = useRef<string[]>([]);
+  const isPlayingRef = useRef(false);
 
   const t = TRANSLATIONS[lang as 'en' | 'ru'];
 
@@ -172,6 +177,77 @@ export function Pronunciationtrainer1() {
       default: return vowelChar;
     }
   };
+
+  // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
+  const playNextInQueue = useCallback(() => {
+    if (audioQueueRef.current.length === 0) { 
+      isPlayingRef.current = false; 
+      return; 
+    }
+    
+    isPlayingRef.current = true;
+    const text = audioQueueRef.current.shift();
+    if (!text) {
+      playNextInQueue();
+      return;
+    }
+
+    // Clean text trước khi đọc
+    const cleanText = text.replace(/[*_`#"]/g, '').trim();
+    
+    // Dùng proxy API thay vì Google trực tiếp
+    const url = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=vi`;
+    audioRef.current.src = url;
+    audioRef.current.playbackRate = 1.0;
+    
+    audioRef.current.onended = () => playNextInQueue();
+    audioRef.current.onerror = () => {
+      // Fallback khi lỗi API
+      const fallback = new SpeechSynthesisUtterance(cleanText);
+      fallback.lang = 'vi-VN';
+      fallback.onend = () => playNextInQueue();
+      window.speechSynthesis.speak(fallback);
+    };
+    
+    audioRef.current.play().catch(() => {
+      // Fallback khi play lỗi
+      const fallback = new SpeechSynthesisUtterance(cleanText);
+      fallback.lang = 'vi-VN';
+      fallback.onend = () => playNextInQueue();
+      window.speechSynthesis.speak(fallback);
+    });
+  }, []);
+
+  const playCorrectSound = useCallback((text: string, isContext = false) => {
+    if (!text) return;
+    
+    if (isContext) setIsLoadingContextTTS(true);
+    else setIsLoadingTTS(true);
+    
+    // Dừng âm thanh đang phát
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    audioRef.current.pause();
+    
+    isPlayingRef.current = false;
+    audioQueueRef.current = [];
+    
+    // Clean text và chia nhỏ nếu cần
+    const cleanText = text.replace(/[*_`#"]/g, '').trim();
+    const chunks = cleanText.match(/.{1,170}(\s|$)/g) || [cleanText];
+    audioQueueRef.current = chunks;
+    
+    const stopLoading = () => {
+      if (isContext) setIsLoadingContextTTS(false);
+      else setIsLoadingTTS(false);
+    };
+    
+    audioRef.current.onended = () => {
+      stopLoading();
+      playNextInQueue();
+    };
+    
+    if (!isPlayingRef.current) playNextInQueue();
+  }, [playNextInQueue]);
 
   const fetchDefinition = async (word: string) => {
     const isValid = checkVietnameseValidity(prefixC, selectedVowel, suffixC, activeTab);
@@ -191,7 +267,7 @@ export function Pronunciationtrainer1() {
       Respond in JSON format: {"meaning": "meaning in ${targetLang} or INVALID", "example": "short example sentence in Vietnamese or INVALID", "exampleTranslation": "translation in ${targetLang} or INVALID"}.
       If the word has no common meaning, return INVALID for all fields.`;
 
-      // THAY ĐỔI: Sử dụng generateContentWithRetry thay vì fetch trực tiếp
+      // Sử dụng generateContentWithRetry để xoay vòng key
       const response = await generateContentWithRetry({
         model: ANALYZE_MODEL,
         contents: [{ parts: [{ text: promptText }] }],
@@ -219,20 +295,6 @@ export function Pronunciationtrainer1() {
       fetchDefinition(getFullWord(selectedVowel.char));
     }
   }, [selectedVowel, prefixC, suffixC, activeTab, hasStarted, lang]);
-
-  const playCorrectSound = (text: string, isContext = false) => {
-    if (isContext) setIsLoadingContextTTS(true);
-    else setIsLoadingTTS(true);
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=vi&client=tw-ob`;
-    const audio = new Audio(url);
-    const stopLoading = () => {
-      if (isContext) setIsLoadingContextTTS(false);
-      else setIsLoadingTTS(false);
-    };
-    audio.onended = stopLoading;
-    audio.onerror = stopLoading;
-    audio.play();
-  };
 
   const startRecording = async () => {
     try {
