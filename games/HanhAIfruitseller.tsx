@@ -95,21 +95,48 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     }
   }, [selectedLang]);
 
-  // --- TTS ---
-  const speak = async (text: string, msgId: string | null = null) => {
+  // --- TTS (Đã cập nhật logic lách luật Auto-play) ---
+  const speak = async (text: string, msgId: string | null = null, isFirst: boolean = false) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
+    
+    // Dừng mọi âm thanh cũ đang phát
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+
     const cleanText = text.split('|')[0].replace(/(\d+)k\b/g, '$1 nghìn').replace(/[*#]/g, '').trim();
-    return new Promise<void>(resolve => {
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
-      audioRef.current.src = url;
-      audioRef.current.playbackRate = speechRate;
-      audioRef.current.onended = () => { setActiveVoiceId(null); resolve(); };
-      audioRef.current.play().catch(resolve);
-    });
+
+    if (isFirst && window.speechSynthesis) {
+      // Dùng SpeechSynthesis cho câu đầu tiên để lách luật Auto-play
+      return new Promise<void>(resolve => {
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'vi-VN';
+        utterance.rate = speechRate;
+        utterance.onend = () => { setActiveVoiceId(null); resolve(); };
+        utterance.onerror = () => { setActiveVoiceId(null); resolve(); };
+        window.speechSynthesis.speak(utterance);
+      });
+    } else {
+      // Dùng Google TTS Engine cho các câu sau để lấy giọng hay
+      return new Promise<void>(resolve => {
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=vi&client=tw-ob`;
+        audioRef.current.src = url;
+        audioRef.current.playbackRate = speechRate;
+        audioRef.current.onended = () => { setActiveVoiceId(null); resolve(); };
+        audioRef.current.onerror = () => { setActiveVoiceId(null); resolve(); };
+        audioRef.current.play().catch((err) => {
+          console.error("Audio play failed:", err);
+          setActiveVoiceId(null);
+          resolve();
+        });
+      });
+    }
   };
 
-  // --- AI ENGINE (Cập nhật Mục 3: Xử lý USER_TRANSLATION) ---
+  // --- AI ENGINE (Xử lý USER_TRANSLATION) ---
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -131,21 +158,21 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         model: 'gemini-2.5-flash',
         contents: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
         config: {
-          systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
-          Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
-          Sell: Xoài Cam Lâm, Sầu riêng. 
-          Format: Vietnamese | ${t.systemPromptLang} Translation | USER_TRANSLATION: [Translation of what user just said]`
+          systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller. 
+          Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
+          Sell: Xoài Cam Lâm, Sầu riêng. 
+          Format: Vietnamese | ${t.systemPromptLang} Translation | USER_TRANSLATION: [Translation of what user just said]`
         }
       });
 
       if (response.text) {
         const rawAiResponse = response.text;
         
-        // Bóc tách USER_TRANSLATION (Mục 3)
+        // Bóc tách USER_TRANSLATION
         const userTransMatch = rawAiResponse.match(/USER_TRANSLATION:\s*(.*)$/i);
         const userTranslationValue = userTransMatch ? userTransMatch[1].replace(/[\[\]]/g, '').trim() : "";
         
-        // Làm sạch text của AI (loại bỏ phần USER_TRANSLATION để hiển thị)
+        // Làm sạch text của AI
         const aiCleanText = rawAiResponse.split(/USER_TRANSLATION:/i)[0].trim();
         const aiMsgId = `ai-${Date.now()}`;
 
@@ -157,6 +184,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
           return updated;
         });
 
+        // Gọi hàm speak mặc định (isFirst = false -> Google TTS)
         await speak(aiCleanText, aiMsgId);
       }
     } catch (e) {
@@ -228,7 +256,12 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
               </button>
             ))}
           </div>
-          <button onClick={() => { setGameState('playing'); setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); speak(t.welcome_msg, 'init'); }} className="w-full py-6 bg-orange-500 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-3">
+          <button onClick={() => { 
+            setGameState('playing'); 
+            setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); 
+            // Kích hoạt lách luật ngay khi click
+            speak(t.welcome_msg, 'init', true); 
+          }} className="w-full py-6 bg-orange-500 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-3">
             <Play fill="white" /> {t.ui_start}
           </button>
         </div>
@@ -270,13 +303,13 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
             </div>
           </header>
 
-          {/* Chat Messages (Cập nhật Mục 2: Logic hiển thị tách chuỗi) */}
+          {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 bg-emerald-50/10 custom-scrollbar">
             {messages.map((msg) => {
               const parts = msg.text.split('|');
               const mainText = parts[0]?.trim();
               const aiSubText = parts[1]?.trim();
-              const userSubText = msg.translation; // Mục 3
+              const userSubText = msg.translation; 
               const isActive = activeVoiceId === msg.id;
 
               return (
@@ -286,10 +319,10 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
                       <div className="text-base md:text-lg font-bold leading-relaxed">
                         {msg.role === 'ai' ? renderInteractiveText(mainText) : mainText}
                       </div>
-                      <button onClick={() => speak(mainText, msg.id)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
+                      <button onClick={() => speak(mainText, msg.id, false)} className="opacity-50 hover:opacity-100 transition-opacity"><Volume2 size={20}/></button>
                     </div>
                     
-                    {/* Hiển thị bản dịch (Mục 2 cho AI và Mục 3 cho User) */}
+                    {/* Hiển thị bản dịch */}
                     {(aiSubText || userSubText) && (
                       <div className={`mt-3 pt-3 border-t text-[11px] italic font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>
                         {msg.role === 'ai' ? aiSubText : userSubText}
