@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Minimize } from 'lucide-react';
 
@@ -243,7 +242,6 @@ const gameHTML = `
 </head>
 <body>
 
-<!-- Cửa sổ START -->
 <div id="start-screen" class="fixed inset-0 bg-white flex items-center justify-center z-[10000]">
     <div class="max-w-md w-full px-6 py-4 text-center">
         <div class="mb-3 flex justify-center">
@@ -356,7 +354,7 @@ const gameHTML = `
             { num: 1, word: "Một", en: "One", ru: "Один" },
             { num: 2, word: "Hai", en: "Two", ru: "Два" },
             { num: 3, word: "Ba", en: "Three", ru: "Три" },
-            { num: 4, word: "Bốn", en: "Four", ru: "Четыре" },
+            { num: 4, word: "Bốn", en: "Four", ru: "Четyre" },
             { num: 5, word: "Năm", en: "Five", ru: "Пять" },
             { num: 6, word: "Sáu", en: "Six", ru: "Шесть" },
             { num: 7, word: "Bảy", en: "Seven", ru: "Семь" },
@@ -661,6 +659,10 @@ const gameHTML = `
         matchedInBatch.push(wordObj.data);
         const card = document.getElementById(\`target-\${wordObj.num}\`);
         if(card) card.classList.add('completed');
+        
+        // CẢI TIẾN: Tự động phát âm thanh khi ghép đúng bằng Bridge
+        speak(wordObj.data.word);
+
         wordObj.el.remove();
         activeWords = activeWords.filter(w => w !== wordObj);
         if (matchedInBatch.length === currentTargetsData.length) {
@@ -684,24 +686,19 @@ const gameHTML = `
             item.className = "flex items-center justify-between p-4 bg-blue-50 rounded-2xl";
             item.innerHTML = \`
                 <div>
-                    <div class="text-3xl font-black text-blue-800">\${data.num}: \${data.word}</div>
-                    <div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">\${data[selectedLang]}</div>
+                    <div class="text-3xl font-black text-blue-800">\\${data.num}: \\${data.word}</div>
+                    <div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">\\${data[selectedLang]}</div>
                 </div>
-                <div class="mic-btn" onclick="speak('\${data.word}')">🔊</div>
+                <div class="mic-btn" onclick="speak('\\${data.word}')">🔊</div>
             \`;
             congratsList.appendChild(item);
         });
         matchOverlay.style.display = 'flex';
     }
 
+    // FIX LỖI AUDIO: Thay vì dùng Google TTS bị CORS block, ta gửi Message ra ngoài React Component
     function speak(text) {
-        const url = \`https://translate.google.com/translate_tts?ie=UTF-8&q=\${encodeURIComponent(text)}&tl=vi&client=tw-ob\`;
-        const audio = new Audio(url);
-        audio.play().catch(() => {
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = 'vi-VN';
-            window.speechSynthesis.speak(u);
-        });
+        window.parent.postMessage({ type: 'SPEAK_COMMAND', text: text }, '*');
     }
 
     closeOverlayBtn.onclick = () => {
@@ -768,52 +765,67 @@ export const GameVocabularyNumbers: React.FC = () => {
     const [iframeSrc, setIframeSrc] = useState<string | undefined>(undefined);
 
     useEffect(() => {
+        // LẮNG NGHE TIN NHẮN TỪ TRONG GAME (IFRAME) GỬI RA
+        const handleAudioMessage = (event: MessageEvent) => {
+            if (event.data && event.data.type === 'SPEAK_COMMAND') {
+                const textToSpeak = event.data.text;
+                
+                // Dùng Web Speech API tại đây (Origin chính thống, không bị chặn)
+                window.speechSynthesis.cancel(); // Dừng câu đang nói cũ
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                utterance.lang = 'vi-VN';
+                utterance.rate = 0.9;
+                window.speechSynthesis.speak(utterance);
+            }
+        };
+
+        window.addEventListener('message', handleAudioMessage);
+
         const blob = new Blob([gameHTML], { type: 'text/html' });
         const url = URL.createObjectURL(blob);
         setIframeSrc(url);
-        return () => URL.revokeObjectURL(url);
-    }, []);
 
-    const handleFullscreenChange = () => {
-        setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    useEffect(() => {
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+        return () => {
+            window.removeEventListener('message', handleAudioMessage);
+            URL.revokeObjectURL(url);
+        };
     }, []);
 
     const toggleFullscreen = () => {
-        const elem = gameWrapperRef.current;
-        if (elem) {
-            if (!document.fullscreenElement) {
-                elem.requestFullscreen().catch(err => {
-                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                });
-            } else {
-                document.exitFullscreen();
-            }
+        if (!gameWrapperRef.current) return;
+        if (!document.fullscreenElement) {
+            gameWrapperRef.current.requestFullscreen().catch((err) => {
+                console.error(`Error: ${err.message}`);
+            });
+            setIsFullscreen(true);
+        } else {
+            document.exitFullscreen();
+            setIsFullscreen(false);
         }
     };
 
     return (
-        <div ref={gameWrapperRef} className="relative w-full h-full bg-slate-900">
-            {iframeSrc && (
+        <div ref={gameWrapperRef} className="w-full h-screen bg-slate-900 flex flex-col relative overflow-hidden">
+            <button 
+                onClick={toggleFullscreen}
+                className="absolute top-4 right-4 z-[1000] p-3 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-xl transition-all active:scale-95 shadow-lg"
+                title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+            >
+                {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
+            </button>
+            
+            {iframeSrc ? (
                 <iframe
                     src={iframeSrc}
-                    className="w-full h-full"
-                    style={{ border: 'none' }}
-                    allow="fullscreen"
-                    title="Vietnamese Numbers Game"
-                ></iframe>
+                    className="w-full h-full border-none"
+                    title="Chisla Dash Game"
+                    allow="autoplay"
+                />
+            ) : (
+                <div className="flex items-center justify-center w-full h-full text-white">
+                    Loading Game...
+                </div>
             )}
-            <button 
-                onClick={toggleFullscreen} 
-                title="Toggle Fullscreen" 
-                className="absolute bottom-2 right-2 bg-black/20 text-white/50 p-1.5 rounded-full backdrop-blur-sm hover:bg-black/40 hover:text-white/80 transition-all opacity-40 hover:opacity-100 z-50"
-            >
-                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
         </div>
     );
 };
