@@ -19,7 +19,6 @@ export const Chatbot: React.FC = () => {
     const audioQueueRef = useRef<string[]>([]);
     const isPlayingRef = useRef(false);
 
-    
     // Ảnh đại diện mới của Trang từ Drive 
     const TRANG_AVATAR = "https://lh3.googleusercontent.com/d/1qZb1rHs-Ahs5hDQJTh4CTDiwULXRKB1B";
 
@@ -29,18 +28,22 @@ export const Chatbot: React.FC = () => {
             quickReplies: ['How to start?', 'Meet the teachers', 'I need help'],
             placeholder: "Type or click mic",
             listening: "Listening...",
-            assistantLabel: "Speak with Trang"
+            assistantLabel: "Speak with Trang",
+            online: "ONLINE"
         },
         ru: {
             initialMessage: "Здравствуйте! Добро пожаловать в Truly Easy Vietnamese. Чем я могу вам помочь?",
             quickReplies: ['С чего начать?', 'Познакомиться с учителями', 'Мне нужна помощь'],
             placeholder: "Напишите или нажмите микрофон",
             listening: "Слушаю...",
-            assistantLabel: "Поговорить с Транг"
+            assistantLabel: "Поговорить с Транг",
+            online: "В СЕТИ"
         }
     };
 
-    useEffect(() => { langRef.current = currentLang; }, [currentLang]);
+    useEffect(() => { 
+        langRef.current = currentLang; 
+    }, [currentLang]);
 
     // Load kiến thức từ Google Docs
     useEffect(() => {
@@ -54,26 +57,42 @@ export const Chatbot: React.FC = () => {
         loadKnowledge();
     }, []);
 
-    // Theo dõi đổi ngôn ngữ trên website
+    // --- LẮNG NGHE SỰ KIỆN THAY ĐỔI NGÔN NGỮ TỪ HEADER ---
     useEffect(() => {
         const handleLangChange = () => {
             const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
+            
+            // Chỉ cập nhật nếu ngôn ngữ thay đổi
             if (newLang !== currentLang) {
+                console.log("🔄 Chatbot: Ngôn ngữ thay đổi thành", newLang);
                 setCurrentLang(newLang);
+                
+                // Reset messages với lời chào bằng ngôn ngữ mới
                 setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
-                // Đọc lời chào bằng ngôn ngữ mới sau 500ms
-                setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
+                
+                // Nếu chat đang mở, đọc lời chào bằng ngôn ngữ mới
+                if (isOpen) {
+                    setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
+                }
             }
         };
-        
+
+        // Lắng nghe sự kiện 'languageChanged' từ Header
         window.addEventListener('languageChanged', handleLangChange);
-        const interval = setInterval(handleLangChange, 1000);
+        
+        // Cũng kiểm tra định kỳ (dự phòng)
+        const interval = setInterval(() => {
+            const storedLang = localStorage.getItem('app_lang') as 'en' | 'ru' || 'en';
+            if (storedLang !== currentLang) {
+                handleLangChange();
+            }
+        }, 1000);
         
         return () => { 
             window.removeEventListener('languageChanged', handleLangChange); 
             clearInterval(interval); 
         };
-    }, [currentLang]);
+    }, [currentLang, isOpen]); // Thêm isOpen vào dependency
 
     // --- CLEAN TEXT FUNCTION ---
     const cleanText = useCallback((text: string) => {
@@ -116,7 +135,7 @@ export const Chatbot: React.FC = () => {
 
         // Xác định ngôn ngữ cho giọng đọc
         const currentLangValue = langRef.current;
-        // Bot nói bằng ngôn ngữ được chọn (không phải tiếng Việt)
+        // Bot nói bằng ngôn ngữ được chọn
         const langCode = currentLangValue === 'ru' ? 'ru' : 'en';
         
         // Dùng proxy API
@@ -130,6 +149,7 @@ export const Chatbot: React.FC = () => {
             // Fallback khi lỗi API
             const fallback = new SpeechSynthesisUtterance(text);
             fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
+            fallback.rate = 1.0;
             fallback.onend = () => playNextInQueue();
             window.speechSynthesis.speak(fallback);
         };
@@ -138,6 +158,7 @@ export const Chatbot: React.FC = () => {
             // Fallback khi play lỗi
             const fallback = new SpeechSynthesisUtterance(text);
             fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
+            fallback.rate = 1.0;
             fallback.onend = () => playNextInQueue();
             window.speechSynthesis.speak(fallback);
         });
@@ -232,25 +253,26 @@ export const Chatbot: React.FC = () => {
                 <div className="p-4 bg-slate-50 rounded-t-3xl border-b flex flex-col items-center relative">
                     <img src={TRANG_AVATAR} className="w-14 h-14 rounded-full object-cover mb-1 border-2 border-white shadow-sm" alt="Trang" />
                     <h3 className="font-bold text-slate-800 text-sm">Trang Assistant</h3>
-                    <p className="text-[9px] text-green-500 font-bold">● ONLINE</p>
+                    <p className="text-[9px] text-green-500 font-bold">● {translations[currentLang].online}</p>
                     <button onClick={() => setIsOpen(false)} className="absolute top-3 right-5 text-xl text-slate-400">×</button>
                 </div>
 
                 <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white no-scrollbar">
-                    {messages.length === 0 && (
+                    {messages.length === 0 ? (
                         <div className="flex justify-start">
                             <div className="max-w-[85%] px-4 py-2 bg-slate-100 text-slate-700 rounded-2xl rounded-bl-none text-sm italic">
                                 {translations[currentLang].initialMessage}
                             </div>
                         </div>
-                    )}
-                    {messages.map((msg, index) => (
-                        <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
-                                {msg.text}
+                    ) : (
+                        messages.map((msg, index) => (
+                            <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
+                                    {msg.text}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))
+                    )}
                     {isLoadingAI && <div className="flex justify-start ml-4"><div className="dot-flashing"></div></div>}
                 </div>
 
