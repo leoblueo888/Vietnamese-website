@@ -16,6 +16,7 @@ export const Chatbot: React.FC = () => {
     const audioQueueRef = useRef<string[]>([]);
     const isPlayingRef = useRef(false);
 
+    
     // Ảnh đại diện mới của Trang từ Drive 
     const TRANG_AVATAR = "https://lh3.googleusercontent.com/d/1qZb1rHs-Ahs5hDQJTh4CTDiwULXRKB1B";
 
