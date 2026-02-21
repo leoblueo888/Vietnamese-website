@@ -69,55 +69,72 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
   const t = LANGUAGES[selectedLang];
 
-  // --- TTS LOGIC: VERCEL PROXY + FALLBACK ---
+  // --- LOGIC CHIA NHỎ VÀ PHÁT TUẦN TỰ (PRODUCTION READY) ---
   const speak = async (text: string, msgId: string | null = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
     
-    // Dừng âm thanh cũ
+    // 1. Reset trạng thái
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     audioRef.current.pause();
-    audioRef.current.currentTime = 0;
 
-    const cleanText = text.split('|')[0]
+    const mainText = text.split('|')[0]
       .replace(/(\d+)k\b/g, '$1 nghìn')
       .replace(/[*#]/g, '')
       .trim();
 
-    return new Promise<void>((resolve) => {
-      // Gọi API Route trên Vercel
-      const url = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=vi`;
-      
-      audioRef.current.src = url;
-      audioRef.current.playbackRate = speechRate;
+    // 2. Chia nhỏ text thành các đoạn ~160 ký tự (Ưu tiên ngắt tại dấu câu)
+    const createChunks = (str: string, max = 160) => {
+      const chunks = [];
+      let tempStr = str;
+      while (tempStr.length > 0) {
+        if (tempStr.length <= max) {
+          chunks.push(tempStr);
+          break;
+        }
+        let cutAt = tempStr.lastIndexOf('.', max);
+        if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+        if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+        if (cutAt === -1) cutAt = max;
 
-      // Gán sự kiện trước khi Play (Best Practice)
-      audioRef.current.onended = () => {
-        setActiveVoiceId(null);
-        resolve();
-      };
+        chunks.push(tempStr.slice(0, cutAt + 1).trim());
+        tempStr = tempStr.slice(cutAt + 1).trim();
+      }
+      return chunks;
+    };
 
-      audioRef.current.onerror = () => {
-        console.warn("API TTS Error - Switching to Web Speech Fallback");
-        const fallback = new SpeechSynthesisUtterance(cleanText);
-        fallback.lang = 'vi-VN';
-        fallback.rate = speechRate;
-        fallback.onend = () => { setActiveVoiceId(null); resolve(); };
-        window.speechSynthesis.speak(fallback);
-      };
+    const chunks = createChunks(mainText);
 
-      // Thực hiện phát
-      audioRef.current.play().catch(() => {
-        // Nếu trình duyệt chặn hoàn toàn, dùng Synthesis mồi lại
-        const fallback = new SpeechSynthesisUtterance(cleanText);
-        fallback.lang = 'vi-VN';
-        window.speechSynthesis.speak(fallback);
-        resolve();
+    // 3. Vòng lặp ASYNC để phát từng đoạn một (KHÔNG spam Google)
+    for (const chunk of chunks) {
+      await new Promise<void>((resolve) => {
+        const url = `/api/tts?text=${encodeURIComponent(chunk)}&lang=vi`;
+        audioRef.current.src = url;
+        audioRef.current.load();
+        audioRef.current.playbackRate = speechRate;
+
+        audioRef.current.onended = () => resolve();
+        audioRef.current.onerror = () => {
+          console.warn("Chunk error, switching to fallback");
+          const fallback = new SpeechSynthesisUtterance(chunk);
+          fallback.lang = 'vi-VN';
+          fallback.onend = () => resolve();
+          window.speechSynthesis.speak(fallback);
+        };
+
+        audioRef.current.play().catch(() => {
+          const fallback = new SpeechSynthesisUtterance(chunk);
+          fallback.lang = 'vi-VN';
+          window.speechSynthesis.speak(fallback);
+          resolve();
+        });
       });
-    });
+    }
+    
+    setActiveVoiceId(null);
   };
 
-  // --- RECOGNITION SETUP ---
+  // --- RECOGNITION ---
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -162,7 +179,8 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         config: {
           systemInstruction: `You are Hạnh (20 years old), a friendly fruit seller in Vietnam. 
           Use "Dạ", "ạ", xưng "Em" gọi khách là "Anh". 
-          Always format: Vietnamese | ${t.systemPromptLang} Translation | USER_TRANSLATION: [Translation]`
+          Now you can speak longer (up to 300 chars) as we have split logic. Be helpful and natural.
+          Format: Vietnamese | ${t.systemPromptLang} Translation | USER_TRANSLATION: [Translation]`
         }
       });
 
@@ -191,6 +209,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     }
   };
 
+  // --- RENDER INTERACTIVE TEXT ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -237,6 +256,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // --- RENDER UI ---
   if (gameState === 'start') {
     return (
       <div className="w-full h-full bg-emerald-50 flex items-center justify-center p-4">
@@ -252,7 +272,6 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
             ))}
           </div>
           <button onClick={() => { 
-            // Mồi âm thanh ngay tại đây để mở khóa trình duyệt
             audioRef.current.play().then(() => { audioRef.current.pause(); }).catch(() => {});
             setGameState('playing'); 
             setMessages([{ role: 'ai', text: t.welcome_msg, id: 'init' }]); 
