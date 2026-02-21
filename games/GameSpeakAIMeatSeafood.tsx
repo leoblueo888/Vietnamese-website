@@ -184,7 +184,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
     return () => { 
       if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current); 
     };
-  }, []); // Bỏ dependency messages
+  }, []);
 
   // --- AI ENGINE (GEMINI-2.5-FLASH) ---
   const handleSendMessage = async (text: string) => {
@@ -208,10 +208,20 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
         })), { role: 'user', parts: [{ text: cleanInput }] }],
         config: {
           systemInstruction: `Bạn tên là Thanh (25 tuổi), chuyên gia bán hải sản và thịt tươi sống.
-          PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn. Xưng "Em" - gọi "Anh/Chị". Luôn dùng "Dạ", "ạ", "nha".
-          FORMAT: Vietnamese sentence | ${t.systemPromptLang} translation.
-          At the end, add: USER_TRANSLATION: [Translation of user's last message]
-          Important: Do not use markdown, emojis, or special characters in the Vietnamese part.`
+PHONG CÁCH: Năng động, niềm nở, khéo léo chốt đơn. Xưng "Em" - gọi "Anh/Chị". Luôn dùng "Dạ", "ạ", "nha".
+
+QUY TẮC ĐỊNH DẠNG NGHIÊM NGẶT:
+1. Phần đầu tiên (trước dấu | đầu tiên): CHỈ được viết bằng tiếng Việt. TUYỆT ĐỐI KHÔNG được dùng tiếng Anh trong phần này.
+2. Sau dấu | đầu tiên: Dịch sang ${t.systemPromptLang}
+3. Sau dấu | thứ hai: USER_TRANSLATION: [Dịch tin nhắn cuối của user sang ${t.systemPromptLang}]
+
+VÍ DỤ ĐÚNG:
+"Dạ, em chào anh! Hôm nay anh muốn mua tôm hùm hay cua ạ? | Hi, welcome! Would you like lobster or crab today? | USER_TRANSLATION: [I want to buy lobster]"
+
+VÍ DỤ SAI (KHÔNG ĐƯỢC PHÉP):
+"Hi, welcome! Em có tôm hùm tươi ngon lắm ạ | ..."  (❌ Sai vì có "Hi" ở phần tiếng Việt)
+
+LUẬT VÀNG: Phần tiếng Việt phải là 100% tiếng Việt, không pha tiếng Anh.`
         }
       });
 
@@ -227,7 +237,7 @@ export const GameSpeakAIMeatSeafood: React.FC<{ character: AIFriend }> = ({ char
                      .concat({ role: 'ai', text: aiResponseFull, id: aiMsgId });
         });
         
-        // Chỉ gọi speak 1 lần ở đây
+        // Chỉ gọi speak 1 lần
         await speak(aiResponseFull, aiMsgId);
       }
     } catch (e) { 
