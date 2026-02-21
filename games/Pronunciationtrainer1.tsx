@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Play, Mic, Square, RotateCcw, Volume2, 
   Info, Headphones, Layers, BookOpen, Volume1,
@@ -178,6 +178,31 @@ export function Pronunciationtrainer1() {
     }
   };
 
+  // --- CLEAN TEXT FUNCTION ---
+  const cleanText = useCallback((text: string) => {
+    return text
+      .replace(/[*_`#"]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[✨🎵🔊🔔❌✅⭐]/g, '')
+      .trim();
+  }, []);
+
+  // --- CHUNK LOGIC ---
+  const createChunks = useCallback((str: string, max = 170) => {
+    const chunks = [];
+    let tempStr = str;
+    while (tempStr.length > 0) {
+      if (tempStr.length <= max) { chunks.push(tempStr); break; }
+      let cutAt = tempStr.lastIndexOf('.', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+      if (cutAt === -1) cutAt = max;
+      chunks.push(tempStr.slice(0, cutAt + 1).trim());
+      tempStr = tempStr.slice(cutAt + 1).trim();
+    }
+    return chunks;
+  }, []);
+
   // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
   const playNextInQueue = useCallback(() => {
     if (audioQueueRef.current.length === 0) { 
@@ -193,17 +218,17 @@ export function Pronunciationtrainer1() {
     }
 
     // Clean text trước khi đọc
-    const cleanText = text.replace(/[*_`#"]/g, '').trim();
+    const cleanTextStr = cleanText(text);
     
     // Dùng proxy API thay vì Google trực tiếp
-    const url = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=vi`;
+    const url = `/api/tts?text=${encodeURIComponent(cleanTextStr)}&lang=vi`;
     audioRef.current.src = url;
     audioRef.current.playbackRate = 1.0;
     
     audioRef.current.onended = () => playNextInQueue();
     audioRef.current.onerror = () => {
       // Fallback khi lỗi API
-      const fallback = new SpeechSynthesisUtterance(cleanText);
+      const fallback = new SpeechSynthesisUtterance(cleanTextStr);
       fallback.lang = 'vi-VN';
       fallback.onend = () => playNextInQueue();
       window.speechSynthesis.speak(fallback);
@@ -211,12 +236,12 @@ export function Pronunciationtrainer1() {
     
     audioRef.current.play().catch(() => {
       // Fallback khi play lỗi
-      const fallback = new SpeechSynthesisUtterance(cleanText);
+      const fallback = new SpeechSynthesisUtterance(cleanTextStr);
       fallback.lang = 'vi-VN';
       fallback.onend = () => playNextInQueue();
       window.speechSynthesis.speak(fallback);
     });
-  }, []);
+  }, [cleanText]);
 
   const playCorrectSound = useCallback((text: string, isContext = false) => {
     if (!text) return;
@@ -232,8 +257,9 @@ export function Pronunciationtrainer1() {
     audioQueueRef.current = [];
     
     // Clean text và chia nhỏ nếu cần
-    const cleanText = text.replace(/[*_`#"]/g, '').trim();
-    const chunks = cleanText.match(/.{1,170}(\s|$)/g) || [cleanText];
+    const cleanedText = cleanText(text);
+    const chunks = createChunks(cleanedText);
+    
     audioQueueRef.current = chunks;
     
     const stopLoading = () => {
@@ -247,7 +273,7 @@ export function Pronunciationtrainer1() {
     };
     
     if (!isPlayingRef.current) playNextInQueue();
-  }, [playNextInQueue]);
+  }, [cleanText, createChunks, playNextInQueue]);
 
   const fetchDefinition = async (word: string) => {
     const isValid = checkVietnameseValidity(prefixC, selectedVowel, suffixC, activeTab);
@@ -270,8 +296,8 @@ export function Pronunciationtrainer1() {
       // Sử dụng generateContentWithRetry để xoay vòng key
       const response = await generateContentWithRetry({
         model: ANALYZE_MODEL,
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: { responseMimeType: "application/json" }
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: { responseMimeType: "application/json" }
       });
 
       const result = JSON.parse(response.text);
