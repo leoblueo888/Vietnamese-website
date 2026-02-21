@@ -59,7 +59,7 @@ const getTranslations = (topic?: string | null) => {
         label: "Русский",
         ui_welcome: "Привет! Я Лан. Давай дружить!",
         ui_start: "НАЧАТЬ CHAT",
-        ui_placeholder: "Пишите на любом языке...",
+        ui_placeholder: "Пишите trên любом языке...",
         ui_recording: "СЛУШАЮ...",
         ui_tapToTalk: "Нажмите, để nói tiếng Việt",
         ui_listening: "Лан слушает...",
@@ -245,22 +245,31 @@ export const AIfriendLan: React.FC<{ onBack?: () => void, topic?: string | null 
     });
   };
 
+  const createChunks = (str: string, max = 180) => {
+    const chunks = [];
+    let tempStr = str;
+    while (tempStr.length > 0) {
+      if (tempStr.length <= max) { chunks.push(tempStr); break; }
+      let cutAt = tempStr.lastIndexOf('.', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+      if (cutAt === -1) cutAt = max;
+      chunks.push(tempStr.slice(0, cutAt + 1).trim());
+      tempStr = tempStr.slice(cutAt + 1).trim();
+    }
+    return chunks;
+  };
+
   const speakWord = async (text: string, msgId: any = null) => {
     if (!text) return;
     if (msgId) setActiveVoiceId(msgId);
     const cleanText = text.split('|')[0].trim();
-    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
-      if (idx % 2 === 0) {
-        const nextPunct = arr[idx + 1] || "";
-        const combined = (current + nextPunct).trim();
-        if (combined) acc.push(combined);
-      }
-      return acc;
-    }, []);
+    const chunks = createChunks(cleanText);
+    
     try {
-      for (const segment of segments) {
+      for (const chunk of chunks) {
         await new Promise<void>((resolve) => {
-          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
+          const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
           audioRef.current.src = url;
           audioRef.current.playbackRate = speechSpeed; 
           audioRef.current.onended = () => resolve();
