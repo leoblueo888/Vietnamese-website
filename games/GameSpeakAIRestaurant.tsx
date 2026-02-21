@@ -133,7 +133,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
     
     for (const chunk of chunks) {
       await new Promise<void>((resolve) => {
-        // Dùng API proxy (quan trọng!)
+        // Dùng API proxy
         const url = `/api/tts?text=${encodeURIComponent(chunk)}&lang=vi`;
         audioRef.current.src = url;
         audioRef.current.playbackRate = speechRate;
@@ -189,7 +189,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
     return () => { 
       if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current); 
     };
-  }, []); // Bỏ dependency messages
+  }, []);
 
   // --- AI ENGINE (GEMINI-2.5-FLASH) ---
   const handleSendMessage = async (text: string) => {
@@ -213,14 +213,20 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
         })), { role: 'user', parts: [{ text: cleanInput }] }],
         config: {
           systemInstruction: `You are Linh, a 20-year-old professional waiter and culinary expert.
-          SERVICE RULES:
-          1. Don't mention prices until checkout (Tính tiền).
-          2. Ask for drinks after food. 
-          3. Recap entire order at the end.
-          4. When confirmed: "Dạ, em sẽ mang đồ ăn ra ngay sau ít phút ạ."
-          FORMAT: Vietnamese sentence | ${t.systemPromptLang} translation.
-          At the end, add: USER_TRANSLATION: [Translation of user's last message]
-          Important: Do not use markdown, emojis, or special characters in the Vietnamese part.`
+SERVICE RULES:
+1. Don't mention prices until checkout (Tính tiền).
+2. Ask for drinks after food.
+3. Recap entire order at the end.
+4. When confirmed: "Dạ, em sẽ mang đồ ăn ra ngay sau ít phút ạ."
+
+STRICT FORMAT:
+- First part: Vietnamese sentence ONLY (no English words, no translations)
+- Then: | symbol
+- Then: ${t.systemPromptLang} translation of that Vietnamese sentence
+
+At the end, add: USER_TRANSLATION: [Translation of user's last message into ${t.systemPromptLang}]
+
+IMPORTANT: The text before the first | MUST be 100% Vietnamese only. Do NOT mix English words in the Vietnamese part.`
         }
       });
 
@@ -236,7 +242,7 @@ export const GameSpeakAIRestaurant: React.FC<{ character: AIFriend }> = ({ chara
                      .concat({ role: 'ai', text: aiResponseFull, id: aiMsgId });
         });
         
-        // Chỉ gọi speak 1 lần ở đây
+        // Chỉ gọi speak 1 lần
         await speak(aiResponseFull, aiMsgId);
 
         if (aiResponseFull.toLowerCase().includes("mang đồ ăn ra ngay")) {
