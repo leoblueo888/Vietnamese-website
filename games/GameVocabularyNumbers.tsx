@@ -28,8 +28,6 @@ const gameHTML = `
             display: flex;
             flex-direction: column;
         }
-
-        /* Layout cho khu vực chứa thẻ mục tiêu */
         #targets-container {
             display: flex;
             justify-content: center;
@@ -41,8 +39,6 @@ const gameHTML = `
             padding: 20px;
             transition: all 0.3s ease;
         }
-
-        /* Thẻ mục tiêu mặc định (PC/Ngang) */
         .target-card {
             background: #ffffff;
             border-radius: 40px;
@@ -58,14 +54,12 @@ const gameHTML = `
             transition: all 0.3s ease;
             pointer-events: none;
         }
-
         .target-card .number-text {
             font-size: 8rem;
             font-weight: 900;
             color: #1e40af;
             line-height: 1;
         }
-
         .drop-zone {
             width: 200px;
             height: 80px;
@@ -78,171 +72,53 @@ const gameHTML = `
             transition: all 0.3s ease;
             pointer-events: auto;
         }
-
-        /* Tối ưu cho màn hình Dọc (Mobile Portrait) */
         @media (max-width: 600px) and (orientation: portrait) {
-            #targets-container {
-                gap: 1rem;
-                padding: 10px;
-                align-content: center;
-            }
-            .target-card {
-                min-width: 160px;
-                padding: 15px;
-                border-radius: 25px;
-                border-width: 4px;
-                gap: 8px;
-            }
-            .target-card .number-text {
-                font-size: 4rem;
-            }
-            .drop-zone {
-                width: 140px;
-                height: 60px;
-                border-width: 3px;
-            }
-            .floating-word {
-                min-width: 130px !important;
-                padding: 10px 20px !important;
-            }
-            .floating-word .word-main {
-                font-size: 1.3rem !important;
-            }
+            #targets-container { gap: 1rem; padding: 10px; align-content: center; }
+            .target-card { min-width: 160px; padding: 15px; border-radius: 25px; border-width: 4px; gap: 8px; }
+            .target-card .number-text { font-size: 4rem; }
+            .drop-zone { width: 140px; height: 60px; border-width: 3px; }
+            .floating-word { min-width: 130px !important; padding: 10px 20px !important; }
+            .floating-word .word-main { font-size: 1.3rem !important; }
         }
-
-        /* Tối ưu cho màn hình Ngang (Mobile Landscape / PC) */
         @media (orientation: landscape) {
-            .target-card.compact {
-                min-width: 200px;
-                padding: 20px;
-                border-radius: 30px;
-            }
-            .target-card.compact .number-text {
-                font-size: 5.5rem;
-            }
+            .target-card.compact { min-width: 200px; padding: 20px; border-radius: 30px; }
+            .target-card.compact .number-text { font-size: 5.5rem; }
         }
-
-        .target-card.completed {
-            opacity: 0.5;
-            transform: scale(0.9);
-            border-color: #3b82f6;
-            background: #eff6ff;
-        }
-        
-        .drop-zone.active {
-            background: #dbeafe;
-            transform: scale(1.05);
-            border-style: solid;
-            border-color: #1d4ed8;
-        }
-        
+        .target-card.completed { opacity: 0.5; transform: scale(0.9); border-color: #3b82f6; background: #eff6ff; }
+        .drop-zone.active { background: #dbeafe; transform: scale(1.05); border-style: solid; border-color: #1d4ed8; }
         .floating-word {
-            position: absolute;
-            cursor: grab;
-            user-select: none;
-            touch-action: none;
-            background: #ffffff;
-            color: #1e3a8a;
-            padding: 15px 30px;
-            border-radius: 50px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-            z-index: 50;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-width: 160px;
-            border: 3px solid #3b82f6;
-            will-change: transform;
-            left: 0;
-            top: 0;
+            position: absolute; cursor: grab; user-select: none; touch-action: none;
+            background: #ffffff; color: #1e3a8a; padding: 15px 30px; border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); z-index: 50;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-width: 160px; border: 3px solid #3b82f6; will-change: transform; left: 0; top: 0;
         }
-        .floating-word:active {
-            cursor: grabbing;
-        }
-        .floating-word .word-main {
-            font-size: 1.8rem;
-            font-weight: 800;
-            pointer-events: none;
-        }
-        .floating-word .word-sub {
-            font-size: 0.8rem;
-            opacity: 0.6;
-            font-weight: 600;
-            pointer-events: none;
-        }
-
+        .floating-word:active { cursor: grabbing; }
+        .floating-word .word-main { font-size: 1.8rem; font-weight: 800; pointer-events: none; }
+        .floating-word .word-sub { font-size: 0.8rem; opacity: 0.6; font-weight: 600; pointer-events: none; }
         #match-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(30, 58, 138, 0.9);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            backdrop-filter: blur(5px);
+            position: fixed; inset: 0; background: rgba(30, 58, 138, 0.9);
+            display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(5px);
         }
         .congrats-window {
-            background: white;
-            border-radius: 40px;
-            padding: 40px;
-            width: 90%;
-            max-width: 450px;
-            text-align: center;
-            color: #1e3a8a;
-            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+            background: white; border-radius: 40px; padding: 40px; width: 90%; max-width: 450px;
+            text-align: center; color: #1e3a8a; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
             animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        @keyframes popIn {
-            from { transform: scale(0.8); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
-        }
-
-        .mic-btn {
-            background: #3b82f6;
-            color: white;
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-
-        .lang-btn, .opt-btn {
-            transition: all 0.2s;
-            border: 2px solid transparent;
-        }
-        .lang-btn.selected, .opt-btn.selected {
-            border-color: #3b82f6;
-            background-color: #eff6ff;
-            transform: scale(1.02);
-        }
-
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .mic-btn { background: #3b82f6; color: white; width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .lang-btn, .opt-btn { transition: all 0.2s; border: 2px solid transparent; }
+        .lang-btn.selected, .opt-btn.selected { border-color: #3b82f6; background-color: #eff6ff; transform: scale(1.02); }
         .nav-btn {
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white; width: 40px; height: 40px; border-radius: 12px; display: flex;
+            align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;
         }
-        .nav-btn:active {
-            transform: scale(0.9);
-            background: rgba(255, 255, 255, 0.4);
-        }
+        .nav-btn:active { transform: scale(0.9); background: rgba(255, 255, 255, 0.4); }
     </style>
 </head>
 <body>
 
-<!-- Cửa sổ START -->
 <div id="start-screen" class="fixed inset-0 bg-white flex items-center justify-center z-[10000]">
     <div class="max-w-md w-full px-6 py-4 text-center">
         <div class="mb-3 flex justify-center">
@@ -256,43 +132,34 @@ const gameHTML = `
         <div class="bg-blue-50 p-3 rounded-2xl mb-3">
             <p class="text-[9px] font-bold text-blue-400 uppercase tracking-widest mb-2">Select Language</p>
             <div class="grid grid-cols-2 gap-2">
-                <button id="btn-en" onclick="selectLang('en')" class="lang-btn py-2 bg-white text-blue-900 rounded-xl font-bold text-sm shadow-sm selected">
-                    🇬🇧 English
-                </button>
-                <button id="btn-ru" onclick="selectLang('ru')" class="lang-btn py-2 bg-white text-blue-900 rounded-xl font-bold text-sm shadow-sm">
-                    🇷🇺 Русский
-                </button>
+                <button id="btn-en" onclick="window.selectLang('en')" class="lang-btn py-2 bg-white text-blue-900 rounded-xl font-bold text-sm shadow-sm selected">🇬🇧 English</button>
+                <button id="btn-ru" onclick="window.selectLang('ru')" class="lang-btn py-2 bg-white text-blue-900 rounded-xl font-bold text-sm shadow-sm">🇷🇺 Русский</button>
             </div>
         </div>
 
         <div class="bg-slate-50 p-3 rounded-2xl mb-4">
             <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Choose Study Group</p>
             <div class="flex flex-col gap-1.5">
-                <button id="opt-1" onclick="selectOption(1)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center selected">
-                    <span class="text-sm">Option 1: 0 - 10</span>
-                    <span class="text-[10px] opacity-50 font-normal italic">Basic</span>
+                <button id="opt-1" onclick="window.selectOption(1)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center selected">
+                    <span class="text-sm">Option 1: 0 - 10</span> <span class="text-[10px] opacity-50 font-normal italic">Basic</span>
                 </button>
-                <button id="opt-2" onclick="selectOption(2)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center">
-                    <span class="text-sm">Option 2: 11 - 20</span>
-                    <span class="text-[10px] opacity-50 font-normal italic">Advanced</span>
+                <button id="opt-2" onclick="window.selectOption(2)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center">
+                    <span class="text-sm">Option 2: 11 - 20</span> <span class="text-[10px] opacity-50 font-normal italic">Advanced</span>
                 </button>
-                <button id="opt-3" onclick="selectOption(3)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center">
-                    <span class="text-sm">Option 3: Tens & Large</span>
-                    <span class="text-[10px] opacity-50 font-normal italic">Big numbers</span>
+                <button id="opt-3" onclick="window.selectOption(3)" class="opt-btn w-full py-2.5 px-4 bg-white text-blue-900 rounded-xl font-bold shadow-sm text-left flex justify-between items-center">
+                    <span class="text-sm">Option 3: Tens & Large</span> <span class="text-[10px] opacity-50 font-normal italic">Big numbers</span>
                 </button>
             </div>
         </div>
 
-        <button onclick="enterGame()" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
-            START GAME
-        </button>
+        <button onclick="window.enterGame()" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all">START GAME</button>
     </div>
 </div>
 
 <div class="game-container hidden" id="game-app">
     <div class="p-4 bg-white/10 backdrop-blur-md flex justify-between items-center z-10 border-b border-white/20">
         <div class="flex items-center gap-4">
-            <button onclick="exitToMenu()" class="text-white opacity-60 hover:opacity-100 transition-opacity">
+            <button onclick="window.exitToMenu()" class="text-white opacity-60 hover:opacity-100 transition-opacity">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
@@ -302,15 +169,11 @@ const gameHTML = `
                 <p class="text-[10px] font-bold text-blue-100 uppercase tracking-widest"><span id="ui-level-label">LEVEL</span> <span id="level-display">1</span></p>
             </div>
             <div class="flex gap-2 ml-2">
-                <button onclick="changeRound(-1)" class="nav-btn" title="Quay lại">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7" />
-                    </svg>
+                <button onclick="window.changeRound(-1)" class="nav-btn" title="Quay lại">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7" /></svg>
                 </button>
-                <button onclick="changeRound(1)" class="nav-btn" title="Tiếp theo">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7" />
-                    </svg>
+                <button onclick="window.changeRound(1)" class="nav-btn" title="Tiếp theo">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7" /></svg>
                 </button>
             </div>
         </div>
@@ -328,9 +191,7 @@ const gameHTML = `
         <div class="congrats-window">
             <h3 class="text-blue-600 font-black uppercase tracking-widest text-sm mb-6" id="ui-great-work">Great Work!</h3>
             <div id="congrats-list" class="flex flex-col gap-4 max-h-[40vh] overflow-y-auto pr-2"></div>
-            <button id="close-overlay-btn" class="mt-8 w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-2xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all">
-                NEXT
-            </button>
+            <button id="close-overlay-btn" class="mt-8 w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-2xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all">NEXT</button>
         </div>
     </div>
 
@@ -339,48 +200,35 @@ const gameHTML = `
             <div class="text-6xl mb-6">🏆</div>
             <h2 id="modal-title" class="text-3xl font-black mb-2 text-blue-900">Level Complete!</h2>
             <p id="modal-text" class="text-blue-600 mb-8 font-semibold italic">Excellent progress!</p>
-            <button id="modal-btn" class="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all">
-                NEXT STAGE
-            </button>
+            <button id="modal-btn" class="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all">NEXT STAGE</button>
         </div>
     </div>
 </div>
 
 <script>
-    // --- AUDIO FUNCTION ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
-    function speakVietnamese(text) {
+(function() {
+    // --- AUDIO FUNCTION ---
+    window.speakVietnamese = function(text) {
         if (!text) return;
-        
-        // Dừng âm thanh đang phát
-        if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-        }
-        
-        // Clean text - escape backtick trong regex
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
         const cleanText = text.replace(/[*_\`#]/g, '').trim();
         if (!cleanText) return;
-        
-        // Dùng proxy API thay vì Google trực tiếp
         const url = '/api/tts?text=' + encodeURIComponent(cleanText) + '&lang=vi';
         const audio = new Audio(url);
-        
         audio.onerror = function() {
-            // Fallback khi lỗi API
-            const fallback = new SpeechSynthesisUtterance(cleanText);
-            fallback.lang = 'vi-VN';
-            window.speechSynthesis.speak(fallback);
+            const fb = new SpeechSynthesisUtterance(cleanText);
+            fb.lang = 'vi-VN';
+            window.speechSynthesis.speak(fb);
         };
-        
         audio.play().catch(function() {
-            // Fallback khi play lỗi
-            const fallback = new SpeechSynthesisUtterance(cleanText);
-            fallback.lang = 'vi-VN';
-            window.speechSynthesis.speak(fallback);
+            const fb = new SpeechSynthesisUtterance(cleanText);
+            fb.lang = 'vi-VN';
+            window.speechSynthesis.speak(fb);
         });
-    }
+    };
 
+    // --- DATA ---
     const dropSfx = new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3');
-
     const rawNumberData = {
         opt1: [
             { num: 0, word: "Không", en: "Zero", ru: "Ноль" },
@@ -425,22 +273,11 @@ const gameHTML = `
     };
 
     const translations = {
-        en: {
-            title: "Vietnamese Numbers", level: "LEVEL", matches: "MATCHES",
-            greatWork: "Great Work!", next: "NEXT", lvlComplete: "Level Complete!",
-            expert: "You're doing great!", congrats: "Congratulations!",
-            mastered: "Numbers Mastered!", playAgain: "PLAY AGAIN",
-            stage: "NEXT STAGE", drop: "MATCH"
-        },
-        ru: {
-            title: "Вьетнамские цифры", level: "УРОВЕНЬ", matches: "МАТЧИ",
-            greatWork: "Отлично!", next: "ДАЛЕЕ", lvlComplete: "Уровень пройден!",
-            expert: "Отличный прогресс!", congrats: "Поздравляем!",
-            mastered: "Цифры освоены!", playAgain: "ИГРАТЬ СНОВА",
-            stage: "СЛЕДУЮЩИЙ ЭТАП", drop: "МАТЧ"
-        }
+        en: { title: "Vietnamese Numbers", level: "LEVEL", matches: "MATCHES", greatWork: "Great Work!", next: "NEXT", lvlComplete: "Level Complete!", expert: "You're doing great!", congrats: "Congratulations!", mastered: "Numbers Mastered!", playAgain: "PLAY AGAIN", stage: "NEXT STAGE", drop: "MATCH" },
+        ru: { title: "Вьетнамские цифры", level: "УРОВЕНЬ", matches: "МАТЧИ", greatWork: "Отлично!", next: "ДАЛЕЕ", lvlComplete: "Уровень пройден!", expert: "Отличный прогресс!", congrats: "Поздравляем!", mastered: "Цифры освоены!", playAgain: "ИГРАТЬ СНОВА", stage: "СЛЕДУЮЩИЙ ЭТАП", drop: "МАТЧ" }
     };
 
+    // --- VARIABLES ---
     let selectedLang = 'en';
     let selectedOption = 1;
     let numberData = [];
@@ -451,38 +288,42 @@ const gameHTML = `
     let currentTargetsData = [];
     let matchedInBatch = [];
     let internalLevelStep = 0;
-    
-    const playArea = document.getElementById('play-area');
-    const targetsContainer = document.getElementById('targets-container');
-    const levelDisplay = document.getElementById('level-display');
-    const progressDisplay = document.getElementById('progress-display');
-    const totalDisplay = document.getElementById('total-display');
-    const modal = document.getElementById('modal');
-    const modalBtn = document.getElementById('modal-btn');
-    const modalTitle = document.getElementById('modal-title');
-    const modalText = document.getElementById('modal-text');
-    const matchOverlay = document.getElementById('match-overlay');
-    const closeOverlayBtn = document.getElementById('close-overlay-btn');
-    const congratsList = document.getElementById('congrats-list');
-
-    const MAX_LEVEL = 4;
     let levels = {};
+    const MAX_LEVEL = 4;
 
-    function selectLang(lang) {
+    // --- DOM ELEMENTS ---
+    let playArea, targetsContainer, levelDisplay, progressDisplay, totalDisplay, modal, modalBtn, modalTitle, modalText, matchOverlay, closeOverlayBtn, congratsList;
+
+    function initDomRefs() {
+        playArea = document.getElementById('play-area');
+        targetsContainer = document.getElementById('targets-container');
+        levelDisplay = document.getElementById('level-display');
+        progressDisplay = document.getElementById('progress-display');
+        totalDisplay = document.getElementById('total-display');
+        modal = document.getElementById('modal');
+        modalBtn = document.getElementById('modal-btn');
+        modalTitle = document.getElementById('modal-title');
+        modalText = document.getElementById('modal-text');
+        matchOverlay = document.getElementById('match-overlay');
+        closeOverlayBtn = document.getElementById('close-overlay-btn');
+        congratsList = document.getElementById('congrats-list');
+    }
+
+    // --- FUNCTIONS ---
+    window.selectLang = function(lang) {
         selectedLang = lang;
         document.getElementById('btn-en').classList.toggle('selected', lang === 'en');
         document.getElementById('btn-ru').classList.toggle('selected', lang === 'ru');
-    }
+    };
 
-    function selectOption(opt) {
+    window.selectOption = function(opt) {
         selectedOption = opt;
-        document.querySelectorAll('.opt-btn').forEach(function(b) { 
-            b.classList.remove('selected'); 
-        });
+        document.querySelectorAll('.opt-btn').forEach(function(b) { b.classList.remove('selected'); });
         document.getElementById('opt-' + opt).classList.add('selected');
-    }
+    };
 
-    function enterGame() {
+    window.enterGame = function() {
+        initDomRefs();
         numberData = rawNumberData['opt' + selectedOption];
         
         if (selectedOption === 1) {
@@ -513,14 +354,14 @@ const gameHTML = `
         updateUILanguage();
         currentLevel = 1;
         initLevel();
-    }
+    };
 
-    function exitToMenu() {
+    window.exitToMenu = function() {
         document.getElementById('game-app').classList.add('hidden');
         document.getElementById('start-screen').classList.remove('hidden');
         cancelAnimationFrame(animationFrame);
         animationFrame = null;
-    }
+    };
 
     function updateUILanguage() {
         var t = translations[selectedLang];
@@ -542,30 +383,22 @@ const gameHTML = `
         if (!animationFrame) animate();
     }
 
-    function updateProgress() {
-        progressDisplay.innerText = score;
-    }
+    function updateProgress() { progressDisplay.innerText = score; }
 
-    function changeRound(direction) {
+    window.changeRound = function(direction) {
         var config = levels[currentLevel];
         var newScore = score + (direction * (currentTargetsData.length || 1));
         if (newScore < 0) newScore = 0;
-        if (newScore > config.total) {
-            showLevelModal();
-            return;
-        }
+        if (newScore > config.total) { showLevelModal(); return; }
         score = newScore;
         updateProgress();
         if (config.sequence) {
             internalLevelStep += direction;
             if (internalLevelStep < 0) internalLevelStep = 0;
-            if (internalLevelStep >= config.sequence.length) {
-                showLevelModal();
-                return;
-            }
+            if (internalLevelStep >= config.sequence.length) { showLevelModal(); return; }
         }
         spawnTargets();
-    }
+    };
 
     function spawnTargets() {
         targetsContainer.innerHTML = '';
@@ -575,14 +408,10 @@ const gameHTML = `
         
         if (config.sequence) {
             var targetVal = config.sequence[internalLevelStep];
-            var found = numberData.find(function(d) { 
-                return d.num === targetVal; 
-            });
+            var found = numberData.find(function(d) { return d.num === targetVal; });
             if(found) currentTargetsData.push(found);
         } else {
-            var shuffled = [...numberData].sort(function() { 
-                return Math.random() - 0.5; 
-            });
+            var shuffled = [...numberData].sort(function() { return Math.random() - 0.5; });
             for(var i=0; i<Math.min(config.targets, shuffled.length); i++) {
                 currentTargetsData.push(shuffled[i]);
             }
@@ -600,9 +429,7 @@ const gameHTML = `
     }
 
     function spawnWordsForBatch() {
-        activeWords.forEach(function(w) { 
-            w.el.remove(); 
-        });
+        activeWords.forEach(function(w) { w.el.remove(); });
         activeWords = [];
         var config = levels[currentLevel];
         
@@ -646,11 +473,8 @@ const gameHTML = `
             document.querySelectorAll('.drop-zone').forEach(function(zone) {
                 var zr = zone.getBoundingClientRect();
                 var overlap = Math.max(0, Math.min(wordRect.right, zr.right) - Math.max(wordRect.left, zr.left)) * Math.max(0, Math.min(wordRect.bottom, zr.bottom) - Math.max(wordRect.top, zr.top));
-                if (overlap > (zr.width * zr.height * 0.4)) {
-                    zone.classList.add('active');
-                } else {
-                    zone.classList.remove('active');
-                }
+                if (overlap > (zr.width * zr.height * 0.4)) zone.classList.add('active'); 
+                else zone.classList.remove('active');
             });
         }
 
@@ -700,54 +524,38 @@ const gameHTML = `
         if(card) card.classList.add('completed');
         
         // PHÁT ÂM THANH KHI DROP ĐÚNG
-        speakVietnamese(wordObj.data.word);
+        window.speakVietnamese(wordObj.data.word);
         
         wordObj.el.remove();
-        activeWords = activeWords.filter(function(w) { 
-            return w !== wordObj; 
-        });
+        activeWords = activeWords.filter(function(w) { return w !== wordObj; });
         if (matchedInBatch.length === currentTargetsData.length) {
             var config = levels[currentLevel];
             confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#1e40af', '#3b82f6', '#ffffff'] });
             if (config.sequence) {
                  internalLevelStep++;
-                 if (score >= config.total) {
-                     showLevelModal();
-                 } else {
-                     setTimeout(function() { 
-                         spawnTargets(); 
-                     }, 1200);
-                 }
+                 if (score >= config.total) showLevelModal();
+                 else setTimeout(function() { spawnTargets(); }, 1200);
             } else {
-                 if (score >= config.total) {
-                     showLevelModal();
-                 } else {
-                     setTimeout(function() { 
-                         spawnTargets(); 
-                     }, 1200);
-                 }
+                 if (score >= config.total) showLevelModal();
+                 else setTimeout(function() { spawnTargets(); }, 1200);
             }
         }
     }
 
-    function showCongratsOverlay(dataList) {
+    window.showCongratsOverlay = function(dataList) {
         congratsList.innerHTML = '';
         dataList.forEach(function(data) {
             var item = document.createElement('div');
             item.className = "flex items-center justify-between p-4 bg-blue-50 rounded-2xl";
-            item.innerHTML = '<div><div class="text-3xl font-black text-blue-800">' + data.num + ': ' + data.word + '</div><div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">' + data[selectedLang] + '</div></div><div class="mic-btn" onclick="speakVietnamese(\'' + data.word + '\')">🔊</div>';
+            item.innerHTML = '<div><div class="text-3xl font-black text-blue-800">' + data.num + ': ' + data.word + '</div><div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">' + data[selectedLang] + '</div></div><div class="mic-btn" onclick="window.speakVietnamese(\'' + data.word + '\')">🔊</div>';
             congratsList.appendChild(item);
         });
         matchOverlay.style.display = 'flex';
-    }
+    };
 
     closeOverlayBtn.onclick = function() {
         matchOverlay.style.display = 'none';
-        if (score >= levels[currentLevel].total) {
-            showLevelModal();
-        } else {
-            spawnTargets();
-        }
+        if (score >= levels[currentLevel].total) showLevelModal(); else spawnTargets();
     };
 
     function showLevelModal() {
@@ -769,8 +577,7 @@ const gameHTML = `
         var area = playArea.getBoundingClientRect();
         activeWords.forEach(function(word) {
             if (!word.isDragging) {
-                word.x += word.dx; 
-                word.y += word.dy;
+                word.x += word.dx; word.y += word.dy;
                 if (word.x <= 0 || word.x >= area.width - word.width) word.dx *= -1;
                 if (word.y <= 0 || word.y >= area.height - word.height) word.dy *= -1;
                 word.el.style.transform = 'translate3d(' + word.x + 'px, ' + word.y + 'px, 0)';
@@ -781,12 +588,8 @@ const gameHTML = `
 
     modalBtn.onclick = function() {
         modal.classList.add('hidden');
-        if (currentLevel < MAX_LEVEL) {
-            currentLevel++;
-            initLevel();
-        } else {
-            exitToMenu();
-        }
+        if (currentLevel < MAX_LEVEL) { currentLevel++; initLevel(); } 
+        else { window.exitToMenu(); }
     };
     
     window.addEventListener('resize', function() {
@@ -798,6 +601,7 @@ const gameHTML = `
             if (word.y > window.innerHeight - word.height) word.y = window.innerHeight - word.height;
         });
     });
+})();
 </script>
 </body>
 </html>
