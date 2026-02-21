@@ -13,6 +13,9 @@ export const Chatbot: React.FC = () => {
     const langRef = useRef(currentLang);
     const recognitionRef = useRef<any | null>(null);
     const chatBodyRef = useRef<HTMLDivElement>(null);
+    
+    // Audio refs
+    const audioRef = useRef(new Audio());
     const audioQueueRef = useRef<string[]>([]);
     const isPlayingRef = useRef(false);
 
@@ -29,11 +32,11 @@ export const Chatbot: React.FC = () => {
             assistantLabel: "Speak with Trang"
         },
         ru: {
-            initialMessage: "Здравствуйте, chào mừng đến với Truly Easy Vietnamese. Tôi có thể giúp gì cho bạn?",
-            quickReplies: ['С чего начать?', 'Преподаватели', 'Мне нужна помощь'],
-            placeholder: "Напишите hoặc nhấn mic",
+            initialMessage: "Здравствуйте! Добро пожаловать в Truly Easy Vietnamese. Чем я могу вам помочь?",
+            quickReplies: ['С чего начать?', 'Познакомиться с учителями', 'Мне нужна помощь'],
+            placeholder: "Напишите или нажмите микрофон",
             listening: "Слушаю...",
-            assistantLabel: "Поговорить с Trang"
+            assistantLabel: "Поговорить с Транг"
         }
     };
 
@@ -58,6 +61,8 @@ export const Chatbot: React.FC = () => {
             if (newLang !== currentLang) {
                 setCurrentLang(newLang);
                 setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
+                // Đọc lời chào bằng ngôn ngữ mới
+                setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
             }
         };
         window.addEventListener('languageChanged', handleLangChange);
@@ -65,45 +70,83 @@ export const Chatbot: React.FC = () => {
         return () => { window.removeEventListener('languageChanged', handleLangChange); clearInterval(interval); };
     }, [currentLang]);
 
-    // --- LOGIC AUDIO CHUẨN (GOOGLE TRANSLATE) ---
+    // --- CLEAN TEXT FUNCTION ---
+    const cleanText = (text: string) => {
+        return text
+            .replace(/[*_`#|]/g, '')
+            .replace(/\s+/g, ' ')
+            .replace(/[✨🎵🔊🔔❌✅⭐]/g, '')
+            .trim();
+    };
+
+    // --- CHUNK LOGIC ---
+    const createChunks = (str: string, max = 170) => {
+        const chunks = [];
+        let tempStr = str;
+        while (tempStr.length > 0) {
+            if (tempStr.length <= max) { chunks.push(tempStr); break; }
+            let cutAt = tempStr.lastIndexOf('.', max);
+            if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+            if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+            if (cutAt === -1) cutAt = max;
+            chunks.push(tempStr.slice(0, cutAt + 1).trim());
+            tempStr = tempStr.slice(cutAt + 1).trim();
+        }
+        return chunks;
+    };
+
+    // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
     const playNextInQueue = useCallback(() => {
         if (audioQueueRef.current.length === 0) {
             isPlayingRef.current = false;
             return;
         }
+        
         isPlayingRef.current = true;
         const text = audioQueueRef.current.shift();
-        if (!text) return;
+        if (!text) {
+            playNextInQueue();
+            return;
+        }
 
-        const langCode = langRef.current === 'ru' ? 'ru' : 'en';
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`;
+        const langCode = langRef.current === 'ru' ? 'ru' : 'vi'; // Bot nói tiếng Việt, nhưng assistant label tiếng Nga
+        const url = `/api/tts?text=${encodeURIComponent(text)}&lang=${langCode}`;
         
-        const audio = new Audio(url);
-        audio.onended = () => playNextInQueue();
-        audio.onerror = () => playNextInQueue();
-        audio.play().catch(() => playNextInQueue());
+        audioRef.current.src = url;
+        audioRef.current.playbackRate = 1.0;
+        
+        audioRef.current.onended = () => playNextInQueue();
+        audioRef.current.onerror = () => {
+            // Fallback khi lỗi API
+            const fallback = new SpeechSynthesisUtterance(text);
+            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'vi-VN';
+            fallback.onend = () => playNextInQueue();
+            window.speechSynthesis.speak(fallback);
+        };
+        
+        audioRef.current.play().catch(() => {
+            // Fallback khi play lỗi
+            const fallback = new SpeechSynthesisUtterance(text);
+            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'vi-VN';
+            fallback.onend = () => playNextInQueue();
+            window.speechSynthesis.speak(fallback);
+        });
     }, []);
 
     const speakStandard = useCallback((text: string) => {
+        if (!text) return;
+        
         // Dừng mọi âm thanh cũ
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        audioRef.current.pause();
+        
         isPlayingRef.current = false;
         audioQueueRef.current = [];
         
-        const cleanedText = text.replace(/[*_`#|]/g, '').trim();
-        // Chia nhỏ văn bản thành các đoạn dưới 180 ký tự
-        const chunks = cleanedText.match(/[^.!?\s][^.!?]*(?:[.!?](?!['"]?\s|$)[^.!?]*)*[.!?]?['"]?(?=\s|$)/g) || [cleanedText];
+        const cleanedText = cleanText(text);
+        const chunks = createChunks(cleanedText);
         
-        let finalChunks: string[] = [];
-        chunks.forEach(chunk => {
-            if (chunk.length > 170) {
-                const subChunks = chunk.match(/.{1,170}(\s|$)/g) || [chunk];
-                finalChunks.push(...subChunks);
-            } else {
-                finalChunks.push(chunk);
-            }
-        });
-
-        audioQueueRef.current = finalChunks;
+        audioQueueRef.current = chunks;
         if (!isPlayingRef.current) playNextInQueue();
     }, [playNextInQueue]);
 
@@ -140,7 +183,8 @@ export const Chatbot: React.FC = () => {
             speakStandard(aiText);
         } catch (error) {
             console.error("AI Error:", error);
-            setMessages(prev => [...prev, { text: "Connection error.", isBot: true }]);
+            const errorMsg = langRef.current === 'ru' ? "Ошибка соединения." : "Connection error.";
+            setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
         } finally {
             setIsLoadingAI(false);
         }
@@ -153,9 +197,13 @@ export const Chatbot: React.FC = () => {
                 .animate-float { animation: float 4s ease-in-out infinite; }
                 .dot-flashing { width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
                 @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+                .no-scrollbar::-webkit-scrollbar { display: none; }
             `}</style>
 
-            <button onClick={() => { setIsOpen(!isOpen); if(!isOpen) speakStandard(translations[currentLang].initialMessage); }} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float">
+            <button onClick={() => { 
+                setIsOpen(!isOpen); 
+                if(!isOpen) setTimeout(() => speakStandard(translations[currentLang].initialMessage), 500); 
+            }} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float">
                 <span className="hidden md:block bg-white px-4 py-1.5 rounded-full shadow-lg text-[#1e5aa0] font-bold text-sm border">
                     {translations[currentLang].assistantLabel}
                 </span>
@@ -199,8 +247,20 @@ export const Chatbot: React.FC = () => {
                         ))}
                     </div>
                     <div className="flex items-center gap-2">
-                        <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} className="flex-1 p-2.5 bg-slate-50 border rounded-2xl outline-none text-sm" placeholder={translations[currentLang].placeholder} />
-                        <button onClick={() => handleSendMessage(inputValue)} className="w-10 h-10 bg-[#1e5aa0] rounded-2xl flex items-center justify-center text-white">🚀</button>
+                        <input 
+                            value={inputValue} 
+                            onChange={(e) => setInputValue(e.target.value)} 
+                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} 
+                            className="flex-1 p-2.5 bg-slate-50 border rounded-2xl outline-none text-sm" 
+                            placeholder={translations[currentLang].placeholder} 
+                        />
+                        <button 
+                            onClick={() => handleSendMessage(inputValue)} 
+                            disabled={isLoadingAI}
+                            className="w-10 h-10 bg-[#1e5aa0] rounded-2xl flex items-center justify-center text-white disabled:opacity-50"
+                        >
+                            🚀
+                        </button>
                     </div>
                 </div>
             </div>
