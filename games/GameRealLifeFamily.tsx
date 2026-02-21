@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React,  { useState, useCallback } from 'react';
 import { Zap, Star, ShieldCheck, Play, Globe } from 'lucide-react';
 
 export const GameRealLifeFamily: React.FC = () => {
