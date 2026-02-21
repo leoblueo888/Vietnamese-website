@@ -61,26 +61,31 @@ export const Chatbot: React.FC = () => {
             if (newLang !== currentLang) {
                 setCurrentLang(newLang);
                 setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
-                // Đọc lời chào bằng ngôn ngữ mới
+                // Đọc lời chào bằng ngôn ngữ mới sau 500ms
                 setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
             }
         };
+        
         window.addEventListener('languageChanged', handleLangChange);
         const interval = setInterval(handleLangChange, 1000);
-        return () => { window.removeEventListener('languageChanged', handleLangChange); clearInterval(interval); };
+        
+        return () => { 
+            window.removeEventListener('languageChanged', handleLangChange); 
+            clearInterval(interval); 
+        };
     }, [currentLang]);
 
     // --- CLEAN TEXT FUNCTION ---
-    const cleanText = (text: string) => {
+    const cleanText = useCallback((text: string) => {
         return text
             .replace(/[*_`#|]/g, '')
             .replace(/\s+/g, ' ')
             .replace(/[✨🎵🔊🔔❌✅⭐]/g, '')
             .trim();
-    };
+    }, []);
 
     // --- CHUNK LOGIC ---
-    const createChunks = (str: string, max = 170) => {
+    const createChunks = useCallback((str: string, max = 170) => {
         const chunks = [];
         let tempStr = str;
         while (tempStr.length > 0) {
@@ -93,7 +98,7 @@ export const Chatbot: React.FC = () => {
             tempStr = tempStr.slice(cutAt + 1).trim();
         }
         return chunks;
-    };
+    }, []);
 
     // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
     const playNextInQueue = useCallback(() => {
@@ -109,7 +114,12 @@ export const Chatbot: React.FC = () => {
             return;
         }
 
-        const langCode = langRef.current === 'ru' ? 'ru' : 'vi'; // Bot nói tiếng Việt, nhưng assistant label tiếng Nga
+        // Xác định ngôn ngữ cho giọng đọc
+        const currentLangValue = langRef.current;
+        // Bot nói bằng ngôn ngữ được chọn (không phải tiếng Việt)
+        const langCode = currentLangValue === 'ru' ? 'ru' : 'en';
+        
+        // Dùng proxy API
         const url = `/api/tts?text=${encodeURIComponent(text)}&lang=${langCode}`;
         
         audioRef.current.src = url;
@@ -119,7 +129,7 @@ export const Chatbot: React.FC = () => {
         audioRef.current.onerror = () => {
             // Fallback khi lỗi API
             const fallback = new SpeechSynthesisUtterance(text);
-            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'vi-VN';
+            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
             fallback.onend = () => playNextInQueue();
             window.speechSynthesis.speak(fallback);
         };
@@ -127,7 +137,7 @@ export const Chatbot: React.FC = () => {
         audioRef.current.play().catch(() => {
             // Fallback khi play lỗi
             const fallback = new SpeechSynthesisUtterance(text);
-            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'vi-VN';
+            fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
             fallback.onend = () => playNextInQueue();
             window.speechSynthesis.speak(fallback);
         });
@@ -148,7 +158,7 @@ export const Chatbot: React.FC = () => {
         
         audioQueueRef.current = chunks;
         if (!isPlayingRef.current) playNextInQueue();
-    }, [playNextInQueue]);
+    }, [cleanText, createChunks, playNextInQueue]);
 
     const handleSendMessage = useCallback(async (messageText: string) => {
         const trimmedMessage = messageText.trim();
@@ -159,7 +169,9 @@ export const Chatbot: React.FC = () => {
         setIsLoadingAI(true);
 
         try {
+            // Xác định ngôn ngữ cho AI response
             const targetLang = langRef.current === 'ru' ? 'Russian' : 'English';
+            
             const payload = {
                 model: "gemini-2.5-flash",
                 config: {
@@ -178,7 +190,8 @@ export const Chatbot: React.FC = () => {
             };
 
             const response = await generateContentWithRetry(payload);
-            const aiText = response.text || "Contact support.";
+            const aiText = response.text || (langRef.current === 'ru' ? "Свяжитесь с поддержкой." : "Contact support.");
+            
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
             speakStandard(aiText);
         } catch (error) {
@@ -200,10 +213,13 @@ export const Chatbot: React.FC = () => {
                 .no-scrollbar::-webkit-scrollbar { display: none; }
             `}</style>
 
-            <button onClick={() => { 
-                setIsOpen(!isOpen); 
-                if(!isOpen) setTimeout(() => speakStandard(translations[currentLang].initialMessage), 500); 
-            }} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float">
+            <button 
+                onClick={() => { 
+                    setIsOpen(!isOpen); 
+                    if(!isOpen) setTimeout(() => speakStandard(translations[currentLang].initialMessage), 500); 
+                }} 
+                className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float"
+            >
                 <span className="hidden md:block bg-white px-4 py-1.5 rounded-full shadow-lg text-[#1e5aa0] font-bold text-sm border">
                     {translations[currentLang].assistantLabel}
                 </span>
