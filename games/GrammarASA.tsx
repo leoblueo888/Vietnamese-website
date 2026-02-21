@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   Languages, Zap, ShieldAlert, MapPin, Clock, Cpu, 
@@ -212,15 +211,28 @@ export const GrammarASA: React.FC = () => {
     }
   }, [currentData, mode, inquiryVariantIdx, visibility, adjustFontSize, gameStarted]);
 
-  const speakWithGoogleTTS = useCallback((text: string) => {
+  // --- HÀM SPEECH SYNTHESIS MỚI ---
+  const speakWithWebSpeech = useCallback((text: string) => {
     if (!text) return;
-    const encodedText = encodeURIComponent(text);
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=vi&client=tw-ob`;
-    const audio = new Audio(ttsUrl);
-    setIsSpeaking(true);
-    audio.play().catch(() => {}).finally(() => { 
-      audio.onended = () => setIsSpeaking(false); 
-    });
+    
+    // Hủy bỏ âm thanh cũ
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    utterance.rate = 0.9; // Tốc độ vừa phải
+
+    // Tìm giọng đọc Tiếng Việt chất lượng tốt nhất nếu có
+    const voices = window.speechSynthesis.getVoices();
+    const viVoice = voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) || 
+                    voices.find(v => v.lang.includes('vi'));
+    if (viVoice) utterance.voice = viVoice;
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
   }, []);
 
   const callGemini = async (prompt: any) => {
@@ -371,7 +383,7 @@ export const GrammarASA: React.FC = () => {
   };
 
   const speakFullSentence = () => {
-    speakWithGoogleTTS(getFullSentenceVi());
+    speakWithWebSpeech(getFullSentenceVi());
   };
 
   const toggleTheme = () => {
@@ -382,7 +394,7 @@ export const GrammarASA: React.FC = () => {
     <div className="relative group/word inline-flex items-center">
       <div 
         className={`flex items-center gap-1 transition-all duration-300 hover:scale-105 ${colorClass} ${decorationClass} asa-word-box px-2 landscape:px-3 py-1 rounded-lg relative z-20 whitespace-nowrap font-black cursor-pointer`}
-        onClick={() => speakWithGoogleTTS(text)}
+        onClick={() => speakWithWebSpeech(text)}
       >
         <span className="asa-word-text">{text}</span>
         {isMain && <span className={`absolute -inset-1 blur-sm rounded-lg -z-10 group-hover/word:bg-white/10 transition-all ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'}`}></span>}
@@ -420,7 +432,7 @@ export const GrammarASA: React.FC = () => {
                 onClick={(e) => {
                   e.stopPropagation();
                   setInquiryVariantIdx(i);
-                  speakWithGoogleTTS(v.vi);
+                  speakWithWebSpeech(v.vi);
                   setShowInquiryDropdown(false);
                 }}
                 className={`asa-inquiry-option px-3 py-3 landscape:px-4 landscape:py-4 text-left text-[11px] landscape:text-base font-black uppercase tracking-widest transition-colors rounded-lg ${inquiryVariantIdx === i ? 'bg-amber-500 text-slate-950' : `${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-600 hover:bg-slate-50'}`}`}
@@ -500,7 +512,7 @@ export const GrammarASA: React.FC = () => {
             
             <div className="flex items-center gap-2 landscape:gap-4">
               <button onClick={speakFullSentence} className={`asa-listen-btn group flex items-center gap-2 landscape:gap-3 px-3 landscape:px-8 py-2 landscape:py-3 rounded-xl transition-all active:scale-95 text-[10px] landscape:text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'bg-slate-800 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500 hover:text-slate-950 shadow-inner' : 'bg-slate-100 text-cyan-700 border border-cyan-600/20 hover:bg-cyan-600 hover:text-white'}`}>
-                <Volume2 className="w-4 h-4" /> <span className="hidden landscape:inline">{t.listen}</span>
+                {isSpeaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} <span className="hidden landscape:inline">{t.listen}</span>
               </button>
               <div className={`asa-mode-switcher flex rounded-xl p-1 border shadow-inner ${theme === 'dark' ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                 {[
@@ -566,101 +578,154 @@ export const GrammarASA: React.FC = () => {
                           placeholder={module.key === 'subject' ? t.pronoun : t.translateLabel} 
                           value={(inputs as any)[module.key]} 
                           onChange={(e) => setInputs(prev => ({ ...prev, [module.key]: e.target.value }))} 
-                          className={`asa-custom-input w-full px-2 py-1 rounded-md text-[8px] font-bold outline-none border mb-1 ${theme === 'dark' ? 'bg-slate-950/30 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'}`} 
-                          disabled={isHidden} 
-                        />
+                          className={`asa-custom-input w-full p-1.5 text-[8px] rounded-md outline-none border transition-all ${theme === 'dark' ? 'bg-slate-950/40 border-slate-800 text-cyan-400 focus:border-cyan-500' : 'bg-white border-slate-200 text-cyan-700 focus:border-cyan-600'}`}
+                       />
+                      )}
+                      {loadingSlots[module.key as keyof typeof loadingSlots] && (
+                        <div className="mt-1 flex items-center gap-1">
+                          <Loader2 className="w-2 h-2 animate-spin text-cyan-500" />
+                          <span className="text-[6px] text-slate-500 animate-pulse">Syncing...</span>
+                        </div>
                       )}
                     </div>
                   );
                 })}
               </div>
             </aside>
-            
-            <div className="asa-sentence-container flex-1 flex flex-col overflow-hidden relative">
-               <div ref={containerRef as any} className="flex-1 flex flex-col justify-center items-center px-4 landscape:px-10 overflow-hidden relative">
-                  <div 
-                    ref={sentenceRef as any}
-                    style={{ transform: `scale(${scale})`, transformOrigin: 'center', transition: 'transform 0.4s' }}
-                    className="asa-sentence-content flex flex-wrap landscape:flex-nowrap items-center justify-center gap-x-2 landscape:gap-x-6 gap-y-3 text-2xl landscape:text-7xl font-black tracking-tighter z-20 text-center"
-                  >
-                     <WordComponent text={currentData.subj.vi} note={currentData.subj.note} isMain isSubject colorClass={theme === 'dark' ? 'text-white' : 'text-slate-900'} decorationClass={`underline underline-offset-4 landscape:underline-offset-8 ${theme === 'dark' ? 'decoration-cyan-500/30' : 'decoration-cyan-600/30'}`} />
-                     {mode === 'question' && <WordComponent text="có" note={null} colorClass={theme === 'dark' ? 'text-amber-400/80' : 'text-amber-600'} decorationClass="italic border-b border-amber-400/20" />}
-                     {mode === 'negative' && <WordComponent text="không" note={null} colorClass={theme === 'dark' ? 'text-rose-500' : 'text-rose-600'} decorationClass="border px-3 landscape:px-6 py-1 landscape:py-2 rounded-xl landscape:rounded-2xl bg-rose-500/10 border-rose-500/20" />}
-                     {visibility.aspect && currentData.aspect.vi && <WordComponent text={currentData.aspect.vi} note={currentData.aspect.note} colorClass={theme === 'dark' ? 'text-amber-500' : 'text-amber-600'} decorationClass="border-b-2 border-dotted border-amber-500/40" />}
-                     <WordComponent text={currentData.verb.vi} note={null} isMain colorClass={theme === 'dark' ? 'text-white' : 'text-slate-900'} decorationClass="border-b-2 landscape:border-b-4 border-slate-800" />
-                     {visibility.object && <WordComponent text={currentData.obj.vi} note={null} isMain colorClass={theme === 'dark' ? 'text-white' : 'text-slate-900'} decorationClass="border-b-2 landscape:border-b-4 border-slate-800" />}
-                     {visibility.withWho && <WordComponent text={currentData.withWho.vi} note={null} colorClass={theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} decorationClass="px-2 landscape:px-4 py-1 landscape:py-2 rounded-lg landscape:rounded-xl bg-indigo-500/5 border border-indigo-500/20" />}
-                     {visibility.place && <WordComponent text={currentData.place.vi} note={null} colorClass={theme === 'dark' ? 'text-cyan-400/60' : 'text-cyan-600/80'} decorationClass="px-3 landscape:px-6 py-1 landscape:py-2 rounded-lg landscape:rounded-2xl border border-cyan-500/10" />}
-                     {visibility.time && <WordComponent text={currentData.time.vi} note={null} colorClass="text-slate-500" decorationClass="italic" />}
-                     {mode === 'question' && (
-                       <WordComponent text={INQUIRY_VARIANTS[inquiryVariantIdx].vi} note={INQUIRY_VARIANTS[inquiryVariantIdx].note} isQuestionVariant colorClass={theme === 'dark' ? 'text-amber-400' : 'text-amber-600'} decorationClass="border px-3 landscape:px-6 py-1 landscape:py-2 rounded-lg landscape:rounded-2xl bg-amber-400/10 border-amber-400/20 ml-1 landscape:ml-4" />
-                     )}
-                  </div>
-               </div>
 
-               <footer className={`asa-footer p-3 landscape:p-5 border-t z-10 flex items-center justify-center shrink-0 ${theme === 'dark' ? 'border-slate-800 bg-slate-950/50' : 'border-slate-100 bg-slate-50'}`}>
-                 <div className="w-full flex flex-col landscape:flex-row items-center justify-center text-center">
-                    <p className="asa-translation-label text-[9px] landscape:hidden font-black text-cyan-500 uppercase tracking-widest mb-1">{t.translation}</p>
-                    <p className={`asa-translation-text text-[12px] landscape:text-lg font-bold tracking-tight leading-snug max-w-2xl px-4 ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
-                       "{getFullSentenceTranslation()}"
-                    </p>
-                 </div>
-               </footer>
-            </div>
+            <section ref={containerRef} className="asa-preview flex-1 flex flex-col items-center justify-center p-6 landscape:p-12 relative overflow-hidden">
+              <div className="absolute top-4 left-4 flex items-center gap-2 opacity-30">
+                <Cpu className="w-4 h-4" />
+                <span className="text-[8px] font-black uppercase tracking-[0.3em]">Neural Synth Active</span>
+              </div>
+              
+              <div 
+                className="asa-sentence-container flex flex-col items-center transition-all duration-500"
+                style={{ transform: `scale(${scale})` }}
+              >
+                <div ref={sentenceRef} className="asa-sentence-line flex flex-wrap justify-center gap-x-2 gap-y-4 landscape:gap-x-4 mb-8">
+                  <WordComponent 
+                    text={currentData.subj.vi} 
+                    colorClass={theme === 'dark' ? 'text-white' : 'text-slate-950'} 
+                    decorationClass="border-b-4 border-cyan-500 shadow-[0_4px_0_rgba(6,182,212,0.2)]"
+                    note={currentData.subj.note}
+                    isSubject={true}
+                  />
+
+                  {mode === 'negative' && (
+                    <WordComponent 
+                      text="không" 
+                      colorClass="text-rose-500" 
+                      decorationClass="border-b-4 border-rose-500/30"
+                      note="Negation marker: 'Not'"
+                    />
+                  )}
+
+                  {mode === 'question' && (
+                    <WordComponent 
+                      text="có" 
+                      colorClass="text-amber-500" 
+                      decorationClass="border-b-4 border-amber-500/30 italic"
+                      note="Question marker used with 'không' at the end."
+                      isOptionalCo={true}
+                    />
+                  )}
+
+                  {visibility.aspect && currentData.aspect.vi && (
+                    <WordComponent 
+                      text={currentData.aspect.vi} 
+                      colorClass="text-emerald-500" 
+                      decorationClass="border-b-4 border-emerald-500/30 italic"
+                      note={currentData.aspect.note}
+                    />
+                  )}
+
+                  <WordComponent 
+                    text={currentData.verb.vi} 
+                    colorClass={theme === 'dark' ? 'text-white' : 'text-slate-950'} 
+                    decorationClass="border-b-4 border-cyan-500 shadow-[0_4px_0_rgba(6,182,212,0.2)]"
+                    note={getActiveData('verb').en}
+                    isMain={true}
+                  />
+
+                  {visibility.object && (
+                    <WordComponent 
+                      text={currentData.obj.vi} 
+                      colorClass="text-indigo-500" 
+                      decorationClass="border-b-4 border-indigo-500/30"
+                      note={currentData.obj.en}
+                    />
+                  )}
+
+                  {visibility.withWho && (
+                    <WordComponent 
+                      text={currentData.withWho.vi} 
+                      colorClass="text-fuchsia-500" 
+                      decorationClass="border-b-4 border-fuchsia-500/30"
+                      note={currentData.withWho.en}
+                    />
+                  )}
+
+                  {visibility.place && (
+                    <WordComponent 
+                      text={currentData.place.vi} 
+                      colorClass="text-orange-500" 
+                      decorationClass="border-b-4 border-orange-500/30"
+                      note={currentData.place.en}
+                    />
+                  )}
+
+                  {visibility.time && (
+                    <WordComponent 
+                      text={currentData.time.vi} 
+                      colorClass="text-sky-500" 
+                      decorationClass="border-b-4 border-sky-500/30"
+                      note={currentData.time.en}
+                    />
+                  )}
+
+                  {mode === 'question' && (
+                    <WordComponent 
+                      text={INQUIRY_VARIANTS[inquiryVariantIdx].vi} 
+                      colorClass="text-amber-500" 
+                      decorationClass="border-b-4 border-amber-500/30 shadow-[0_4px_0_rgba(245,158,11,0.2)]"
+                      note={INQUIRY_VARIANTS[inquiryVariantIdx].note}
+                      isQuestionVariant={true}
+                    />
+                  )}
+                </div>
+
+                <div className={`asa-translation-box p-6 landscape:p-8 rounded-[2rem] border-2 max-w-2xl w-full transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/40 border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-100 shadow-xl'}`}>
+                  <div className="flex items-center gap-2 mb-3 opacity-40">
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t.translation}</span>
+                  </div>
+                  <p className={`text-sm landscape:text-xl font-medium italic leading-relaxed ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+                    "{getFullSentenceTranslation()}"
+                  </p>
+                </div>
+              </div>
+
+              <div className="absolute bottom-8 right-8 flex gap-3">
+                 <button onClick={toggleFullscreen} className={`p-3 rounded-xl border transition-all ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-900'}`}>
+                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                 </button>
+              </div>
+            </section>
           </main>
+
+          <footer className={`asa-footer px-6 py-3 border-t flex justify-between items-center text-[8px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'bg-slate-950/80 border-slate-800/50 text-slate-600' : 'bg-white border-slate-100 text-slate-400'}`}>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" /> CORE SENTENCE</span>
+              <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> MODIFIERS</span>
+              <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> LOGIC</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <History size={12} /> SESSION ID: {Math.random().toString(36).substring(7).toUpperCase()}
+            </div>
+          </footer>
         </div>
       </div>
-      <button 
-        onClick={toggleFullscreen}
-        className="absolute bottom-1 left-1 z-50 p-1.5 bg-black/10 text-white/50 rounded-full backdrop-blur-sm shadow-md opacity-40 hover:opacity-100 transition-all"
-        aria-label="Toggle fullscreen"
-      >
-        {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-      </button>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
-        
-        .asa-game-root:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
-        .asa-game-root:fullscreen .asa-game-wrapper {
-            aspect-ratio: 16 / 9;
-            width: auto; height: auto;
-            max-width: 100%; max-height: 100%;
-        }
-        .asa-game-root:fullscreen .asa-game-wrapper { overflow: hidden; }
-
-        /* VMIN Scaling for Fullscreen */
-        .asa-game-root:fullscreen .asa-header { padding: 1.5vmin; }
-        .asa-game-root:fullscreen .asa-theme-btn { padding: 1.5vmin; border-radius: 1.2vmin; }
-        .asa-game-root:fullscreen .asa-theme-icon { width: 3vmin; height: 3vmin; }
-        .asa-game-root:fullscreen .asa-title { font-size: 1.5vmin; }
-        .asa-game-root:fullscreen .asa-slogan { font-size: 1vmin; }
-        .asa-game-root:fullscreen .asa-listen-btn { padding: 1.5vmin 3vmin; border-radius: 1.2vmin; font-size: 1.2vmin; gap: 1vmin; }
-        .asa-game-root:fullscreen .asa-listen-btn svg { width: 2vmin; height: 2vmin; }
-        .asa-game-root:fullscreen .asa-mode-switcher { padding: 0.5vmin; border-radius: 1.2vmin; }
-        .asa-game-root:fullscreen .asa-mode-btn { padding: 1.2vmin 2.5vmin; font-size: 1.2vmin; border-radius: 0.8vmin; }
-        
-        .asa-game-root:fullscreen .asa-main { flex-direction: column-reverse; }
-        .asa-game-root:fullscreen .asa-aside { width: 100%; overflow-x: auto; overflow-y: hidden; border-r: 0; border-top: 1px solid; }
-        .asa-game-root:fullscreen .asa-aside > div { display: grid; grid-template-columns: repeat(7, 1fr); }
-        .asa-game-root:fullscreen .asa-control-module { padding: 1vmin 1.5vmin; border-b: 0; border-right: 1px solid; }
-        .asa-game-root:fullscreen .asa-control-label { font-size: 1vmin; }
-        .asa-game-root:fullscreen .asa-visibility-toggle { width: 1.8vmin; height: 1.8vmin; }
-        .asa-game-root:fullscreen .asa-select-display { font-size: 1.2vmin; padding: 1vmin; border-radius: 0.8vmin; }
-        .asa-game-root:fullscreen .asa-custom-input { font-size: 1.1vmin; padding: 0.8vmin 1vmin; border-radius: 0.6vmin; }
-        
-        .asa-game-root:fullscreen .asa-sentence-container { padding: 2vmin; }
-        .asa-game-root:fullscreen .asa-sentence-content { transform: scale(1) !important; flex-wrap: nowrap; gap: 2.5vmin; }
-        .asa-game-root:fullscreen .asa-word-text { font-size: 9.5vmin; }
-        .asa-game-root:fullscreen .asa-word-box { padding: 0.5vmin 2vmin; border-radius: 1.5vmin; }
-        .asa-game-root:fullscreen .asa-dropdown-btn { padding: 0.5vmin; }
-        .asa-game-root:fullscreen .asa-dropdown-icon { width: 3vmin; height: 3vmin; }
-        .asa-game-root:fullscreen .asa-tooltip-text { font-size: 1.5vmin; }
-        .asa-game-root:fullscreen .asa-inquiry-option { font-size: 1.8vmin; padding: 1.5vmin 2vmin; }
-
-        .asa-game-root:fullscreen .asa-footer { padding: 1.5vmin; }
-        .asa-game-root:fullscreen .asa-translation-text { font-size: 2.5vmin; }
-      `}</style>
     </div>
   );
 };
