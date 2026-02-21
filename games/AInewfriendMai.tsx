@@ -68,7 +68,6 @@ const getTranslations = (topic?: string | null) => {
   };
 };
 
-// Hàm xử lý dấu câu riêng cho Mai (Giống Thu)
 const punctuateText = async (rawText: string) => {
     if (!rawText.trim()) return rawText;
     try {
@@ -106,74 +105,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
 
   const t = getTranslations(topic)[selectedLang];
 
-  // --- RECOGNITION (Đã fix để tự động gửi sau khi im lặng giống Thu) ---
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'vi-VN';
-      
-      recognition.onstart = () => {
-        setIsRecording(true);
-        isProcessingRef.current = false;
-      };
-
-      recognition.onresult = (event: any) => {
-        if (isProcessingRef.current) return;
-        const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
-        setUserInput(currentTranscript);
-        
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = setTimeout(async () => {
-            if (currentTranscript.trim() && !isProcessingRef.current) {
-                recognition.stop();
-                const punctuated = await punctuateText(currentTranscript.trim());
-                handleSendMessage(punctuated, true);
-            }
-        }, 2500);
-      };
-
-      recognition.onerror = () => setIsRecording(false);
-      recognition.onend = () => setIsRecording(false);
-      recognitionRef.current = recognition;
-    }
-  }, [selectedLang]);
-
-  // --- TTS ---
-  const speakWord = async (text: string, msgId: string | null = null) => {
-    if (!text) return;
-    if (msgId) setActiveVoiceId(msgId);
-    const cleanText = text.split('|')[0].replace(/[*_`#]/g, '').trim();
-    
-    const segments = cleanText.split(/([,.!?;:]+)/).reduce((acc: string[], current, idx, arr) => {
-        if (idx % 2 === 0) {
-          const nextPunct = arr[idx + 1] || "";
-          const combined = (current + nextPunct).trim();
-          if (combined) acc.push(combined);
-        }
-        return acc;
-    }, []);
-
-    try {
-        for (const segment of segments) {
-            await new Promise<void>(resolve => {
-                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(segment)}&tl=vi&client=tw-ob`;
-                audioRef.current.src = url;
-                audioRef.current.playbackRate = speechRate;
-                audioRef.current.onended = () => resolve();
-                audioRef.current.onerror = () => resolve();
-                audioRef.current.play().catch(resolve);
-            });
-        }
-    } finally {
-        setActiveVoiceId(null);
-    }
-  };
-
-  // --- AI BRIDGE (Đã đồng bộ với cấu trúc generateContentWithRetry) ---
-  const handleSendMessage = async (text: string, fromMic = false) => {
+  const handleSendMessage = useCallback(async (text: string, fromMic = false) => {
     if (!text?.trim() || isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsThinking(true);
@@ -186,7 +118,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
     setUserInput("");
 
     try {
-      const chatPayload = {
+      const data = await generateContentWithRetry({
         model: "gemini-2.5-flash",
         config: {
           systemInstruction: `
@@ -202,9 +134,7 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: (m.text || "").split('|')[0].trim() }]
         }))
-      };
-
-      const data = await generateContentWithRetry(chatPayload);
+      });
 
       if (data.text) {
         const rawAiResponse = data.text;
@@ -235,13 +165,83 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
       setIsThinking(false);
       isProcessingRef.current = false;
     }
+  }, [messages, t.systemPromptLang, topic, userName, userPronoun]);
+
+  const handleSendMessageRef = useRef(handleSendMessage);
+  useEffect(() => { handleSendMessageRef.current = handleSendMessage; });
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'vi-VN';
+      
+      recognition.onstart = () => { setIsRecording(true); isProcessingRef.current = false; };
+
+      recognition.onresult = (event: any) => {
+        if (isProcessingRef.current) return;
+        const currentTranscript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
+        setUserInput(currentTranscript);
+        
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(async () => {
+            if (currentTranscript.trim() && !isProcessingRef.current) {
+                recognition.stop();
+                const punctuated = await punctuateText(currentTranscript.trim());
+                handleSendMessageRef.current(punctuated, true);
+            }
+        }, 2500);
+      };
+
+      recognition.onerror = () => setIsRecording(false);
+      recognition.onend = () => setIsRecording(false);
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const createChunks = (str: string, max = 180) => {
+    const chunks = [];
+    let tempStr = str;
+    while (tempStr.length > 0) {
+      if (tempStr.length <= max) { chunks.push(tempStr); break; }
+      let cutAt = tempStr.lastIndexOf('.', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(',', max);
+      if (cutAt === -1) cutAt = tempStr.lastIndexOf(' ', max);
+      if (cutAt === -1) cutAt = max;
+      chunks.push(tempStr.slice(0, cutAt + 1).trim());
+      tempStr = tempStr.slice(cutAt + 1).trim();
+    }
+    return chunks;
+  };
+
+  const speakWord = async (text: string, msgId: string | null = null) => {
+    if (!text) return;
+    if (msgId) setActiveVoiceId(msgId);
+    const cleanText = text.split('|')[0].replace(/[*_`#]/g, '').trim();
+    const chunks = createChunks(cleanText);
+
+    try {
+        for (const chunk of chunks) {
+            await new Promise<void>(resolve => {
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+                audioRef.current.src = url;
+                audioRef.current.playbackRate = speechRate;
+                audioRef.current.onended = () => resolve();
+                audioRef.current.onerror = () => resolve();
+                audioRef.current.play().catch(resolve);
+            });
+        }
+    } finally {
+        setActiveVoiceId(null);
+    }
   };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // --- RENDER TEXT (Từ điển thông minh) ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -300,7 +300,6 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
   return (
     <div className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative font-sans">
       <div className="w-full h-full max-w-6xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
-        {/* Sidebar */}
         <div className="h-[20vh] md:h-full md:w-1/3 bg-orange-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-orange-100 shrink-0">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <div className="relative">
@@ -317,7 +316,6 @@ export const AInewfriendMai: React.FC<{ onBack?: () => void, topic?: string | nu
           </button>
         </div>
 
-        {/* Chat Area */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
           <header className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-white z-10">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Heart size={14} className="text-orange-500" fill="currentColor"/> {t.ui_learning_title}</span>
