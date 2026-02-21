@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React,  { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Mic, Square, RotateCcw, Volume2, Layers, BookOpen, Globe, Volume1, Info, HelpCircle, X, ChevronRight, Languages } from 'lucide-react';
 
 // --- IMPORT HÀM TỪ CONFIG (Giữ nguyên không sửa file gốc) ---
