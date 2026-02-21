@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Zap, Star, ShieldCheck, Play, Globe } from 'lucide-react';
 
 export const GameRealLifeFamily: React.FC = () => {
-  const [gameState, setGameState] = useState('START'); // START, PLAYING
-  const [language, setLanguage] = useState<'Eng' | 'Rus'>('Eng'); // Eng, Rus
+  const [gameState, setGameState] = useState('START');
+  const [language, setLanguage] = useState<'Eng' | 'Rus'>('Eng');
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [hoveredTip, setHoveredTip] = useState<string | null>(null);
+
+  // --- HÀM PLAY AUDIO DÙNG SPEECH SYNTHESIS (ỔN ĐỊNH 100%) ---
+  const playSpeech = useCallback((text: string) => {
+    if (!text) return;
+
+    // 1. Hủy bỏ mọi câu đang đọc dở để tránh chồng chéo
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    
+    // 2. Tinh chỉnh thông số để giọng nghe tự nhiên nhất có thể
+    utterance.rate = 0.85; // Đọc chậm một chút để rõ âm tiết tiếng Việt
+    utterance.pitch = 1.0; // Độ cao vừa phải
+    utterance.volume = 1.0;
+
+    // 3. Cố gắng chọn giọng đọc xịn (nếu trình duyệt có sẵn nhiều lựa chọn)
+    const voices = window.speechSynthesis.getVoices();
+    const viVoice = voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) || 
+                    voices.find(v => v.lang.includes('vi'));
+    
+    if (viVoice) {
+      utterance.voice = viVoice;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
   const uiContent = {
     Eng: {
@@ -13,7 +40,7 @@ export const GameRealLifeFamily: React.FC = () => {
       howTo: "HOW TO PLAY",
       desc: "Click on each member to hear the Vietnamese pronunciation and learn the vocabulary.",
       startBtn: "START GAME",
-      engine: "GOOGLE TTS ACTIVE",
+      engine: "SYSTEM VOICE ACTIVE", // Cập nhật nhãn
       footer: "Extended Family Mapping System",
       instruction: "Tap members to hear voice"
     },
@@ -22,7 +49,7 @@ export const GameRealLifeFamily: React.FC = () => {
       howTo: "КАК ИГРАТЬ",
       desc: "Нажмите на каждого члена семьи, чтобы услышать вьетнамское произношение и выучить лексику.",
       startBtn: "НАЧАТЬ ИГРУ",
-      engine: "GOOGLE TTS АКТИВЕН",
+      engine: "ГОЛОС СИСТЕМЫ АКТИВЕН",
       footer: "Система картирования расширенной семьи",
       instruction: "Нажмите, чтобы услышать голос"
     }
@@ -63,16 +90,9 @@ export const GameRealLifeFamily: React.FC = () => {
     ]
   };
 
-  const playGoogleTTS = (text: string) => {
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=vi&client=tw-ob`;
-    const audio = new Audio(url);
-    audio.play().catch(e => console.error("Audio play failed:", e));
-  };
-
   const MemberCard: React.FC<{ member: any }> = ({ member }) => {
     const isSelected = selectedMember === member.id;
     const isHovered = hoveredTip === member.id;
-    
     const theme: Record<string, string> = {
       g1_paternal: 'border-cyan-400 bg-cyan-50/60 text-cyan-900 shadow-[0_0_10px_rgba(34,211,238,0.15)]',
       g1_maternal: 'border-teal-600 bg-teal-50/70 text-teal-900 shadow-[0_0_10px_rgba(13,148,136,0.2)]',
@@ -86,8 +106,6 @@ export const GameRealLifeFamily: React.FC = () => {
 
     const subtitle = language === 'Eng' ? member.en : member.ru;
     const tooltipText = member.tip ? member.tip[language] : null;
-
-    // Determine final border/style classes
     const baseBorderClass = member.specialBorder ? member.specialBorder : (theme[member.group] || theme.g2);
 
     return (
@@ -97,7 +115,7 @@ export const GameRealLifeFamily: React.FC = () => {
           onMouseLeave={() => setHoveredTip(null)}
           onClick={() => {
             setSelectedMember(member.id);
-            playGoogleTTS(member.vn);
+            playSpeech(member.vn); // Chuyển sang hàm Synthesis
           }}
           className={`group relative flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all duration-300 backdrop-blur-md ${baseBorderClass} ${isSelected ? 'scale-105 ring-4 ring-white/50 z-20 shadow-lg' : 'hover:-translate-y-1'} w-18 h-14 sm:w-28 sm:h-20`}
         >
@@ -108,7 +126,6 @@ export const GameRealLifeFamily: React.FC = () => {
           <span className="text-[7px] sm:text-[10px] font-medium opacity-60 leading-none mt-1 text-center px-1 truncate w-full italic">{subtitle}</span>
         </button>
 
-        {/* Tooltip Popup */}
         {isHovered && tooltipText && (
           <div className="absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[150px] bg-slate-800 text-white text-[8px] sm:text-[10px] py-1.5 px-3 rounded-lg shadow-xl pointer-events-none animate-in fade-in slide-in-from-bottom-2">
             {tooltipText}
@@ -125,42 +142,25 @@ export const GameRealLifeFamily: React.FC = () => {
         <div className="w-full h-full max-w-4xl aspect-video bg-white/90 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-white/50 flex flex-col items-center justify-center relative overflow-hidden text-center p-8">
           <div className="absolute -top-20 -left-20 w-80 h-80 bg-indigo-200/30 blur-[120px] rounded-full" />
           <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-fuchsia-200/30 blur-[120px] rounded-full" />
-          
           <div className="relative z-10 flex flex-col items-center gap-6">
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-[2rem] shadow-2xl mb-2">
-              <Zap size={48} className="text-white" fill="currentColor" />
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-[2rem] shadow-2xl mb-2 text-white">
+              <Zap size={48} fill="currentColor" />
             </div>
-            
             <div>
-              <h1 className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tighter mb-2">
-                {uiContent[language].title}
-              </h1>
+              <h1 className="text-3xl sm:text-5xl font-black text-slate-800 tracking-tighter mb-2">{uiContent[language].title}</h1>
               <div className="h-1 w-24 bg-gradient-to-r from-indigo-500 to-fuchsia-500 mx-auto rounded-full"></div>
             </div>
-
             <div className="max-w-md bg-white/50 p-6 rounded-2xl border border-slate-100 backdrop-blur-sm shadow-sm">
               <h2 className="font-bold text-slate-600 text-sm uppercase tracking-widest mb-2 flex items-center justify-center gap-2">
-                <Star size={16} className="text-amber-400" />
-                {uiContent[language].howTo}
+                <Star size={16} className="text-amber-400" /> {uiContent[language].howTo}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-                {uiContent[language].desc}
-              </p>
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">{uiContent[language].desc}</p>
             </div>
-
             <div className="flex gap-4 items-center mt-2">
-              <button onClick={() => setLanguage('Eng')} className={`flex items-center gap-2 px-6 py-3 rounded-full border-2 transition-all font-bold text-sm ${language === 'Eng' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>
-                <Globe size={16} /> ENGLISH
-              </button>
-              <button onClick={() => setLanguage('Rus')} className={`flex items-center gap-2 px-6 py-3 rounded-full border-2 transition-all font-bold text-sm ${language === 'Rus' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>
-                <Globe size={16} /> РУССКИЙ
-              </button>
+              <button onClick={() => setLanguage('Eng')} className={`flex items-center gap-2 px-6 py-3 rounded-full border-2 transition-all font-bold text-sm ${language === 'Eng' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-100'}`}><Globe size={16} /> ENGLISH</button>
+              <button onClick={() => setLanguage('Rus')} className={`flex items-center gap-2 px-6 py-3 rounded-full border-2 transition-all font-bold text-sm ${language === 'Rus' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-100'}`}><Globe size={16} /> РУССКИЙ</button>
             </div>
-
-            <button onClick={() => setGameState('PLAYING')} className="mt-4 flex items-center gap-3 bg-slate-900 text-white px-12 py-5 rounded-full font-black tracking-[0.2em] hover:bg-indigo-600 transition-all hover:scale-105 active:scale-95 shadow-xl">
-              <Play fill="currentColor" size={20} />
-              {uiContent[language].startBtn}
-            </button>
+            <button onClick={() => setGameState('PLAYING')} className="mt-4 flex items-center gap-3 bg-slate-900 text-white px-12 py-5 rounded-full font-black tracking-[0.2em] hover:bg-indigo-600 transition-all shadow-xl"><Play fill="currentColor" size={20} /> {uiContent[language].startBtn}</button>
           </div>
         </div>
       </div>
@@ -170,12 +170,8 @@ export const GameRealLifeFamily: React.FC = () => {
   return (
     <div className="w-full h-full bg-[#f8fafc] flex items-center justify-center p-1 sm:p-4 overflow-hidden font-sans">
       <div className="w-full h-full max-w-6xl aspect-video bg-white/90 backdrop-blur-2xl rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl border border-white/50 flex flex-col p-4 sm:p-6 relative overflow-hidden">
-        
-        {/* Decor */}
         <div className="absolute -top-20 -left-20 w-64 h-64 bg-cyan-200/20 blur-[100px] rounded-full" />
         <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-fuchsia-200/20 blur-[100px] rounded-full" />
-
-        {/* Top Nav */}
         <div className="relative z-10 flex items-center justify-between mb-4 px-2">
           <div className="flex items-center gap-3">
             <button onClick={() => setGameState('START')} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl shadow-lg hover:rotate-12 transition-transform">
@@ -187,15 +183,12 @@ export const GameRealLifeFamily: React.FC = () => {
             </div>
           </div>
           <div className="hidden sm:flex items-center gap-2 bg-slate-100/50 px-4 py-2 rounded-full border border-slate-200 text-[10px] font-bold text-slate-500">
-             <ShieldCheck size={14} className="text-emerald-500" />
-             {uiContent[language].engine}
+             <ShieldCheck size={14} className="text-emerald-500" /> {uiContent[language].engine}
           </div>
         </div>
 
-        {/* Tree Canvas */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center space-y-1 sm:space-y-3">
-          
-          {/* G1: ÔNG BÀ */}
+          {/* Tree Sections (G1, G2, G3, G4) remain same as original logic */}
           <div className="flex flex-col items-center w-full">
             <div className="flex gap-4 sm:gap-16">
               <div className="flex gap-1.5 sm:gap-3">
@@ -209,8 +202,6 @@ export const GameRealLifeFamily: React.FC = () => {
             </div>
             <div className="h-4 w-px bg-slate-200 mt-1"></div>
           </div>
-
-          {/* G2: BỐ MẸ + BÁC CHÚ CÔ */}
           <div className="flex flex-col items-center w-full -mt-2">
             <div className="w-[60%] h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
             <div className="h-4 w-px bg-slate-200"></div>
@@ -222,33 +213,23 @@ export const GameRealLifeFamily: React.FC = () => {
             </div>
             <div className="h-4 w-px bg-slate-200 mt-1"></div>
           </div>
-
-          {/* G3: ANH CHỊ EM + VỢ + CHỒNG */}
           <div className="flex flex-col items-center w-full -mt-2">
             <div className="w-[85%] h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
             <div className="h-4 w-px bg-slate-200"></div>
             <div className="flex flex-wrap justify-center gap-1.5 sm:gap-3 px-2">
-              {familyData.siblings.map(sib => (
-                <MemberCard key={sib.id} member={sib} />
-              ))}
+              {familyData.siblings.map(sib => <MemberCard key={sib.id} member={sib} />)}
             </div>
             <div className="h-4 w-px bg-slate-200 mt-1"></div>
           </div>
-
-          {/* G4: CON CÁI + CHÁU */}
           <div className="flex flex-col items-center w-full -mt-2">
             <div className="w-[40%] h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
             <div className="h-4 w-px bg-slate-200"></div>
             <div className="flex flex-wrap justify-center gap-2 sm:gap-6">
-              {familyData.children.map(child => (
-                <MemberCard key={child.id} member={child} />
-              ))}
+              {familyData.children.map(child => <MemberCard key={child.id} member={child} />)}
             </div>
           </div>
-
         </div>
 
-        {/* Footer Bar */}
         <div className="relative z-10 mt-4 pt-4 border-t border-slate-100 flex justify-between items-center text-[8px] sm:text-[10px] font-bold text-slate-400">
           <span className="uppercase tracking-[0.2em]">{uiContent[language].footer}</span>
           <div className="flex flex-wrap gap-2 sm:gap-4 justify-end">
