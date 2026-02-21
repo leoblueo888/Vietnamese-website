@@ -56,7 +56,7 @@ const DICTIONARY = {
   "nấu ăn": { EN: "cooking", RU: "готовить еду" },
   "giúp đỡ": { EN: "to help", RU: "помогать" },
   "tham quan": { EN: "to visit (sightseeing)", RU: "посещать" },
-  "khám phá": { EN: "to discover", RU: "открывать" },<br>  "trải nghiệm": { EN: "to experience", RU: "испытывать" },
+  "khám phá": { EN: "to discover", RU: "открывать" },  "trải nghiệm": { EN: "to experience", RU: "испытывать" },
   "thưởng thức": { EN: "to enjoy (food/art)", RU: "наслаждаться" },
   "trò chuyện": { EN: "to chat", RU: "беседовать" },
   "chia sẻ": { EN: "to share", RU: "делиться" },
@@ -116,7 +116,7 @@ const getTranslations = (topic?: string | null) => {
     },
     RU: {
       label: "Русский",
-      ui_welcome: "Привет! Я Тху. Давай пообщаемся!",<br>      ui_start: "НАCHАТЬ CHAT",
+      ui_welcome: "Привет! Я Тху. Давай пообщаемся!",     ui_start: "НАCHАТЬ CHAT",
       ui_placeholder: "Пишите сообщение...",
       ui_recording: "СЛУШАЮ...",
       ui_tapToTalk: "Нажмите, để nói tiếng Việt",
