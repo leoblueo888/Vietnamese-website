@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Minimize } from 'lucide-react';
 
@@ -242,6 +243,7 @@ const gameHTML = `
 </head>
 <body>
 
+<!-- Cửa sổ START -->
 <div id="start-screen" class="fixed inset-0 bg-white flex items-center justify-center z-[10000]">
     <div class="max-w-md w-full px-6 py-4 text-center">
         <div class="mb-3 flex justify-center">
@@ -366,12 +368,12 @@ const gameHTML = `
             { num: 11, word: "Mười một", en: "Eleven", ru: "Одиннадцать" },
             { num: 12, word: "Mười hai", en: "Twelve", ru: "Двенадцать" },
             { num: 13, word: "Mười ba", en: "Thirteen", ru: "Тринадцать" },
-            { num: 14, word: "Mười bốn", en: "Fourteen", ru: "Четырнадцать" },
+            { num: 14, word: "Mười bốn", en: "Fourteen", ru: "Чetырнадцать" },
             { num: 15, word: "Mười lăm", en: "Fifteen", ru: "Пятнадцать" },
             { num: 16, word: "Mười sáu", en: "Sixteen", ru: "Шестнадцать" },
             { num: 17, word: "Mười bảy", en: "Seventeen", ru: "Семнадцать" },
             { num: 18, word: "Mười tám", en: "Eighteen", ru: "Восемнадцать" },
-            { num: 19, word: "Mười chín", en: "Nineteen", ru: "Девятнадцать" },
+            { num: 19, word: "Mười chín", en: "Nineteen", ru: "Девятьнадцать" },
             { num: 20, word: "Hai mươi", en: "Twenty", ru: "Двадцать" }
         ],
         opt3: [
@@ -444,11 +446,11 @@ const gameHTML = `
     function selectOption(opt) {
         selectedOption = opt;
         document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
-        document.getElementById('opt-' + opt).classList.add('selected');
+        document.getElementById(\`opt-\${opt}\`).classList.add('selected');
     }
 
     function enterGame() {
-        numberData = rawNumberData['opt' + selectedOption];
+        numberData = rawNumberData[\`opt\${selectedOption}\`];
         
         if (selectedOption === 1) {
             levels = {
@@ -552,9 +554,14 @@ const gameHTML = `
         const isCompact = currentTargetsData.length >= 3;
         currentTargetsData.forEach(data => {
             const card = document.createElement('div');
-            card.className = 'target-card ' + (isCompact ? 'compact' : '');
-            card.id = 'target-' + data.num;
-            card.innerHTML = '<span class="number-text">' + data.num + '</span><div class="drop-zone" data-num="' + data.num + '"><span class="text-[10px] font-black text-blue-300 uppercase">' + translations[selectedLang].drop + '</span></div>';
+            card.className = \`target-card \${isCompact ? 'compact' : ''}\`;
+            card.id = \`target-\${data.num}\`;
+            card.innerHTML = \`
+                <span class="number-text">\${data.num}</span>
+                <div class="drop-zone" data-num="\${data.num}">
+                    <span class="text-[10px] font-black text-blue-300 uppercase">\${translations[selectedLang].drop}</span>
+                </div>
+            \`;
             targetsContainer.appendChild(card);
         });
         spawnWordsForBatch();
@@ -568,7 +575,7 @@ const gameHTML = `
         currentTargetsData.forEach(data => {
             const el = document.createElement('div');
             el.className = "floating-word";
-            el.innerHTML = '<div class="word-main">' + data.word + '</div><div class="word-sub">' + data[selectedLang] + '</div>';
+            el.innerHTML = \`<div class="word-main">\${data.word}</div><div class="word-sub">\${data[selectedLang]}</div>\`;
             playArea.appendChild(el);
             
             const rect = el.getBoundingClientRect();
@@ -599,7 +606,7 @@ const gameHTML = `
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             wordObj.x = clientX - startX;
             wordObj.y = clientY - startY;
-            el.style.transform = 'translate3d(' + wordObj.x + 'px, ' + wordObj.y + 'px, 0)';
+            el.style.transform = \`translate3d(\${wordObj.x}px, \${wordObj.y}px, 0)\`;
             
             const wordRect = el.getBoundingClientRect();
             document.querySelectorAll('.drop-zone').forEach(zone => {
@@ -652,12 +659,8 @@ const gameHTML = `
         score++;
         updateProgress();
         matchedInBatch.push(wordObj.data);
-        const card = document.getElementById('target-' + wordObj.num);
+        const card = document.getElementById(\`target-\${wordObj.num}\`);
         if(card) card.classList.add('completed');
-        
-        // Phát âm thanh khi ghép đúng
-        speak(wordObj.data.word);
-
         wordObj.el.remove();
         activeWords = activeWords.filter(w => w !== wordObj);
         if (matchedInBatch.length === currentTargetsData.length) {
@@ -679,15 +682,26 @@ const gameHTML = `
         dataList.forEach(data => {
             const item = document.createElement('div');
             item.className = "flex items-center justify-between p-4 bg-blue-50 rounded-2xl";
-            item.innerHTML = '<div><div class="text-3xl font-black text-blue-800">' + data.num + ': ' + data.word + '</div><div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">' + data[selectedLang] + '</div></div><div class="mic-btn" onclick="speak(\'' + data.word + '\')">🔊</div>';
+            item.innerHTML = \`
+                <div>
+                    <div class="text-3xl font-black text-blue-800">\${data.num}: \${data.word}</div>
+                    <div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">\${data[selectedLang]}</div>
+                </div>
+                <div class="mic-btn" onclick="speak('\${data.word}')">🔊</div>
+            \`;
             congratsList.appendChild(item);
         });
         matchOverlay.style.display = 'flex';
     }
 
-    // Gửi message ra React component để phát âm thanh
     function speak(text) {
-        window.parent.postMessage({ type: 'SPEAK_COMMAND', text: text }, '*');
+        const url = \`https://translate.google.com/translate_tts?ie=UTF-8&q=\${encodeURIComponent(text)}&tl=vi&client=tw-ob\`;
+        const audio = new Audio(url);
+        audio.play().catch(() => {
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'vi-VN';
+            window.speechSynthesis.speak(u);
+        });
     }
 
     closeOverlayBtn.onclick = () => {
@@ -704,7 +718,7 @@ const gameHTML = `
             modalBtn.innerText = t.stage;
         } else {
             modalTitle.innerText = t.congrats;
-            modalText.innerHTML = '<span class="text-2xl block mt-2 text-blue-800 font-black">' + t.mastered + '</span>';
+            modalText.innerHTML = \`<span class='text-2xl block mt-2 text-blue-800 font-black'>\${t.mastered}</span>\`;
             modalBtn.innerText = t.playAgain;
             confetti({ particleCount: 300, spread: 150, origin: { y: 0.5 } });
         }
@@ -715,4 +729,91 @@ const gameHTML = `
         activeWords.forEach(word => {
             if (!word.isDragging) {
                 word.x += word.dx; 
-                word
+                word.y += word.dy;
+                if (word.x <= 0 || word.x >= area.width - word.width) word.dx *= -1;
+                if (word.y <= 0 || word.y >= area.height - word.height) word.dy *= -1;
+                word.el.style.transform = \`translate3d(\${word.x}px, \${word.y}px, 0)\`;
+            }
+        });
+        animationFrame = requestAnimationFrame(animate);
+    }
+
+    modalBtn.onclick = () => {
+        modal.classList.add('hidden');
+        if (currentLevel < MAX_LEVEL) {
+            currentLevel++;
+            initLevel();
+        } else {
+            exitToMenu();
+        }
+    };
+    
+    window.addEventListener('resize', () => {
+        activeWords.forEach(word => {
+            const rect = word.el.getBoundingClientRect();
+            word.width = rect.width;
+            word.height = rect.height;
+            if (word.x > window.innerWidth - word.width) word.x = window.innerWidth - word.width;
+            if (word.y > window.innerHeight - word.height) word.y = window.innerHeight - word.height;
+        });
+    });
+</script>
+</body>
+</html>
+`;
+
+export const GameVocabularyNumbers: React.FC = () => {
+    const gameWrapperRef = useRef<HTMLDivElement>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [iframeSrc, setIframeSrc] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        const blob = new Blob([gameHTML], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        setIframeSrc(url);
+        return () => URL.revokeObjectURL(url);
+    }, []);
+
+    const handleFullscreenChange = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    useEffect(() => {
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = () => {
+        const elem = gameWrapperRef.current;
+        if (elem) {
+            if (!document.fullscreenElement) {
+                elem.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    };
+
+    return (
+        <div ref={gameWrapperRef} className="relative w-full h-full bg-slate-900">
+            {iframeSrc && (
+                <iframe
+                    src={iframeSrc}
+                    className="w-full h-full"
+                    style={{ border: 'none' }}
+                    allow="fullscreen"
+                    title="Vietnamese Numbers Game"
+                ></iframe>
+            )}
+            <button 
+                onClick={toggleFullscreen} 
+                title="Toggle Fullscreen" 
+                className="absolute bottom-2 right-2 bg-black/20 text-white/50 p-1.5 rounded-full backdrop-blur-sm hover:bg-black/40 hover:text-white/80 transition-all opacity-40 hover:opacity-100 z-50"
+            >
+                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+        </div>
+    );
+};
