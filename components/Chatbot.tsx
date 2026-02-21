@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// Sử dụng hệ thống xoay vòng Key để tối ưu tầng Free
 import { generateContentWithRetry } from '../config/apiKeys';
 
 export const Chatbot: React.FC = () => {
-    // Lấy ngôn ngữ từ localStorage hoặc mặc định là 'en'
     const [currentLang, setCurrentLang] = useState<'en' | 'ru'>(() => (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en');
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ text: string; isBot: boolean }[]>([]);
@@ -11,148 +9,120 @@ export const Chatbot: React.FC = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
 
-    // Dùng ref để lưu kiến thức, tránh việc fetch đi fetch lại nhiều lần gây chậm
     const knowledgeBaseRef = useRef<string>("");
+    const langRef = useRef(currentLang);
     const recognitionRef = useRef<any | null>(null);
     const chatBodyRef = useRef<HTMLDivElement>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const prevMessagesLength = useRef(messages.length);
+    const audioQueueRef = useRef<string[]>([]);
+    const isPlayingRef = useRef(false);
+
+    // Ảnh đại diện mới của Trang từ Drive 
+    const TRANG_AVATAR = "https://lh3.googleusercontent.com/d/1qZb1rHs-Ahs5hDQJTh4CTDiwULXRKB1B";
 
     const translations = {
         en: {
             initialMessage: "Hi there, welcome to Truly Easy Vietnamese. How can I help you?",
             quickReplies: ['How to start?', 'Meet the teachers', 'I need help'],
-            placeholder: "Type or click mic to talk",
+            placeholder: "Type or click mic",
             listening: "Listening...",
-            assistantLabel: "Speak with AI assistant"
+            assistantLabel: "Speak with Trang"
         },
         ru: {
-            initialMessage: "Здравствуйте, добро пожаловать в Truly Easy Vietnamese. Чем могу помочь?",
+            initialMessage: "Здравствуйте, chào mừng đến với Truly Easy Vietnamese. Tôi có thể giúp gì cho bạn?",
             quickReplies: ['С чего начать?', 'Преподаватели', 'Мне нужна помощь'],
-            placeholder: "Напишите hoặc нажмите микрофон",
+            placeholder: "Напишите hoặc nhấn mic",
             listening: "Слушаю...",
-            assistantLabel: "Поговорить с ИИ-помощником"
+            assistantLabel: "Поговорить с Trang"
         }
     };
 
-    // 1. TẢI KIẾN THỨC SỚM: Tải ngay khi ứng dụng load để khi chat là có ngay dữ liệu
+    useEffect(() => { langRef.current = currentLang; }, [currentLang]);
+
+    // Load kiến thức từ Google Docs
     useEffect(() => {
         const loadKnowledge = async () => {
             try {
                 const docUrl = 'https://docs.google.com/document/d/1i5F5VndGaGbB4d21jRjnJx2YbptF0KdBYHijnjYqe2U/export?format=txt';
                 const response = await fetch(docUrl);
                 knowledgeBaseRef.current = await response.text();
-            } catch (error) {
-                console.error("Lỗi tải kiến thức:", error);
-            }
+            } catch (error) { console.error("Lỗi tải kiến thức:", error); }
         };
         loadKnowledge();
     }, []);
 
-    // Theo dõi sự thay đổi ngôn ngữ từ Website
+    // Theo dõi đổi ngôn ngữ trên website
     useEffect(() => {
         const handleLangChange = () => {
             const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
             if (newLang !== currentLang) {
                 setCurrentLang(newLang);
+                setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
             }
         };
-
-        window.addEventListener('storage', handleLangChange);
         window.addEventListener('languageChanged', handleLangChange);
         const interval = setInterval(handleLangChange, 1000);
-
-        return () => {
-            window.removeEventListener('storage', handleLangChange);
-            window.removeEventListener('languageChanged', handleLangChange);
-            clearInterval(interval);
-        };
+        return () => { window.removeEventListener('languageChanged', handleLangChange); clearInterval(interval); };
     }, [currentLang]);
 
-    // Khi currentLang thay đổi, Reset tin nhắn
-    useEffect(() => {
-        setMessages([{ text: translations[currentLang].initialMessage, isBot: true }]);
-        if (isOpen) {
-            speak(translations[currentLang].initialMessage);
+    // --- LOGIC AUDIO CHUẨN (GOOGLE TRANSLATE) ---
+    const playNextInQueue = useCallback(() => {
+        if (audioQueueRef.current.length === 0) {
+            isPlayingRef.current = false;
+            return;
         }
-    }, [currentLang]);
-
-    useEffect(() => {
-        audioRef.current = new Audio();
-    }, []);
-
-    const stopAudio = useCallback(() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-        }
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.src = '';
-        }
-    }, []);
-
-    const speak = useCallback((text: string) => {
-        stopAudio();
+        isPlayingRef.current = true;
+        const text = audioQueueRef.current.shift();
         if (!text) return;
 
-        const cleanedText = text.replace(/[*_`#|]/g, '').trim();
-        const utterance = new SpeechSynthesisUtterance(cleanedText);
-        utterance.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
-        utterance.rate = 1.0;
+        const langCode = langRef.current === 'ru' ? 'ru' : 'en';
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`;
         
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(v => 
-            v.lang.includes(currentLang === 'ru' ? 'ru' : 'en') && 
-            (v.name.includes('Female') || v.name.includes('Google') || v.name.includes('Samantha'))
-        );
+        const audio = new Audio(url);
+        audio.onended = () => playNextInQueue();
+        audio.onerror = () => playNextInQueue();
+        audio.play().catch(() => playNextInQueue());
+    }, []);
 
-        if (preferredVoice) utterance.voice = preferredVoice;
-        window.speechSynthesis.speak(utterance);
-    }, [stopAudio, currentLang]);
-
-    useEffect(() => {
-        if (messages.length > prevMessagesLength.current) {
-            const lastMessage = messages[messages.length - 1];
-            if (lastMessage.isBot && isOpen) {
-                speak(lastMessage.text);
+    const speakStandard = useCallback((text: string) => {
+        // Dừng mọi âm thanh cũ
+        isPlayingRef.current = false;
+        audioQueueRef.current = [];
+        
+        const cleanedText = text.replace(/[*_`#|]/g, '').trim();
+        // Chia nhỏ văn bản thành các đoạn dưới 180 ký tự
+        const chunks = cleanedText.match(/[^.!?\s][^.!?]*(?:[.!?](?!['"]?\s|$)[^.!?]*)*[.!?]?['"]?(?=\s|$)/g) || [cleanedText];
+        
+        let finalChunks: string[] = [];
+        chunks.forEach(chunk => {
+            if (chunk.length > 170) {
+                const subChunks = chunk.match(/.{1,170}(\s|$)/g) || [chunk];
+                finalChunks.push(...subChunks);
+            } else {
+                finalChunks.push(chunk);
             }
-        }
-        prevMessagesLength.current = messages.length;
-    }, [messages, speak, isOpen]);
+        });
 
-    const toggleChat = () => {
-        if (!isOpen) {
-            setIsOpen(true);
-            setTimeout(() => speak(translations[currentLang].initialMessage), 500);
-        } else {
-            stopAudio();
-            setIsOpen(false);
-        }
-    };
-
-    useEffect(() => {
-        if (chatBodyRef.current) {
-            chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
-        }
-    }, [messages, isLoadingAI]);
+        audioQueueRef.current = finalChunks;
+        if (!isPlayingRef.current) playNextInQueue();
+    }, [playNextInQueue]);
 
     const handleSendMessage = useCallback(async (messageText: string) => {
         const trimmedMessage = messageText.trim();
         if (!trimmedMessage || isLoadingAI) return;
         
-        stopAudio();
         setMessages(prev => [...prev, { text: trimmedMessage, isBot: false }]);
         setInputValue('');
         setIsLoadingAI(true);
 
         try {
-            // Sử dụng dữ liệu đã cache trong Ref để trả lời ngay lập tức
-            const targetLang = currentLang === 'ru' ? 'Russian' : 'English';
-
+            const targetLang = langRef.current === 'ru' ? 'Russian' : 'English';
             const payload = {
                 model: "gemini-2.5-flash",
                 config: {
-                    systemInstruction: `You are Trang, AI assistant for 'Truly Easy Vietnamese'. Answer ONLY in ${targetLang}. Keep it concise (max 3 sentences). Knowledge: ${knowledgeBaseRef.current || "Standard info"}`
+                    systemInstruction: `You are Trang, an AI assistant for 'Truly Easy Vietnamese'. 
+                    RULE: Answer ONLY in ${targetLang}. 
+                    STRICT LIMIT: Your response MUST be under 195 characters.
+                    Context: ${knowledgeBaseRef.current || "Standard website info"}`
                 },
                 contents: [
                     ...messages.slice(-4).map(m => ({
@@ -164,102 +134,72 @@ export const Chatbot: React.FC = () => {
             };
 
             const response = await generateContentWithRetry(payload);
-            const aiText = response.text || (currentLang === 'ru' ? "Извините, я не могу ответить." : "Sorry, I can't answer that.");
-
+            const aiText = response.text || "Contact support.";
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
+            speakStandard(aiText);
         } catch (error) {
-            console.error("Chatbot AI Error:", error);
-            const errorMsg = currentLang === 'ru' ? "Ошибка связи." : "Connection error.";
-            setMessages(prev => [...prev, { text: errorMsg, isBot: true }]);
+            console.error("AI Error:", error);
+            setMessages(prev => [...prev, { text: "Connection error.", isBot: true }]);
         } finally {
             setIsLoadingAI(false);
         }
-    }, [isLoadingAI, stopAudio, currentLang, messages]);
-
-    useEffect(() => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = false;
-            recognition.lang = currentLang === 'ru' ? 'ru-RU' : 'en-US';
-            
-            recognition.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                if (transcript) handleSendMessage(transcript);
-            };
-
-            recognition.onend = () => setIsRecording(false);
-            recognitionRef.current = recognition;
-        }
-    }, [currentLang, handleSendMessage]);
-
-    const toggleRecording = () => {
-        if (!recognitionRef.current) return;
-        if (isRecording) {
-            recognitionRef.current.stop();
-        } else {
-            stopAudio();
-            setIsRecording(true);
-            recognitionRef.current.start();
-        }
-    };
+    }, [isLoadingAI, messages, speakStandard]);
 
     return (
         <>
             <style>{`
-                @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0px); } }
+                @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
                 .animate-float { animation: float 4s ease-in-out infinite; }
-                .dot-flashing { position: relative; width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
+                .dot-flashing { width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
                 @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
-                .no-scrollbar::-webkit-scrollbar { display: none; }
             `}</style>
 
-            <button onClick={toggleChat} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 animate-float">
-                <span className="hidden md:inline-block bg-white/90 backdrop-blur-md font-bold text-[#1e5aa0] px-5 py-2 rounded-full shadow-lg border border-blue-100">
+            <button onClick={() => { setIsOpen(!isOpen); if(!isOpen) speakStandard(translations[currentLang].initialMessage); }} className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float">
+                <span className="hidden md:block bg-white px-4 py-1.5 rounded-full shadow-lg text-[#1e5aa0] font-bold text-sm border">
                     {translations[currentLang].assistantLabel}
                 </span>
-                <div className="w-16 h-16 bg-white rounded-full shadow-xl flex items-center justify-center border-2 border-blue-400 overflow-hidden">
-                    <img src="https://img.icons8.com/fluency/96/bot.png" alt="Trang" className="w-10 h-10" />
+                <div className="w-16 h-16 bg-white rounded-full shadow-2xl border-2 border-blue-400 overflow-hidden flex items-center justify-center">
+                    <img src={TRANG_AVATAR} alt="Trang" className="w-full h-full object-cover" />
                 </div>
             </button>
 
-            <div className={`fixed bottom-24 right-6 w-[350px] h-[550px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col transition-all duration-300 z-50 ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
-                <div className="p-4 bg-slate-50 rounded-t-2xl border-b flex flex-col items-center relative">
-                    <img src="https://img.icons8.com/fluency/96/bot.png" className="w-16 h-16 mb-2" alt="Trang" />
-                    <h3 className="font-bold text-slate-800">Trang Assistant</h3>
-                    <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">● Online</p>
-                    <button onClick={toggleChat} className="absolute top-2 right-4 text-2xl text-slate-300 hover:text-slate-500">×</button>
+            <div className={`fixed bottom-24 right-6 w-[340px] h-[520px] bg-white rounded-3xl shadow-2xl border flex flex-col transition-all z-50 ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
+                <div className="p-4 bg-slate-50 rounded-t-3xl border-b flex flex-col items-center relative">
+                    <img src={TRANG_AVATAR} className="w-14 h-14 rounded-full object-cover mb-1 border-2 border-white shadow-sm" alt="Trang" />
+                    <h3 className="font-bold text-slate-800 text-sm">Trang Assistant</h3>
+                    <p className="text-[9px] text-green-500 font-bold">● ONLINE</p>
+                    <button onClick={() => setIsOpen(false)} className="absolute top-3 right-5 text-xl text-slate-400">×</button>
                 </div>
 
-                <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white scroll-smooth">
+                <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white no-scrollbar">
+                    {messages.length === 0 && (
+                        <div className="flex justify-start">
+                            <div className="max-w-[85%] px-4 py-2 bg-slate-100 text-slate-700 rounded-2xl rounded-bl-none text-sm italic">
+                                {translations[currentLang].initialMessage}
+                            </div>
+                        </div>
+                    )}
                     {messages.map((msg, index) => (
                         <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm font-medium ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
+                            <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
                                 {msg.text}
                             </div>
                         </div>
                     ))}
-                    {isLoadingAI && (
-                        <div className="flex justify-start ml-4">
-                            <div className="dot-flashing"></div>
-                        </div>
-                    )}
+                    {isLoadingAI && <div className="flex justify-start ml-4"><div className="dot-flashing"></div></div>}
                 </div>
 
-                <div className="p-4 border-t bg-white rounded-b-2xl">
-                    <div className="flex gap-2 mb-3 overflow-x-auto pb-2 no-scrollbar">
+                <div className="p-4 border-t space-y-3">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                         {translations[currentLang].quickReplies.map(text => (
-                            <button key={text} onClick={() => handleSendMessage(text)} className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100 transition-colors">
+                            <button key={text} onClick={() => handleSendMessage(text)} className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100">
                                 {text}
                             </button>
                         ))}
                     </div>
                     <div className="flex items-center gap-2">
-                        <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} className="flex-1 p-2 bg-slate-50 border rounded-xl outline-none text-sm focus:border-blue-400" placeholder={isRecording ? translations[currentLang].listening : translations[currentLang].placeholder} />
-                        <button onClick={toggleRecording} className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#1e5aa0]'}`}>
-                            🎤
-                        </button>
+                        <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} className="flex-1 p-2.5 bg-slate-50 border rounded-2xl outline-none text-sm" placeholder={translations[currentLang].placeholder} />
+                        <button onClick={() => handleSendMessage(inputValue)} className="w-10 h-10 bg-[#1e5aa0] rounded-2xl flex items-center justify-center text-white">🚀</button>
                     </div>
                 </div>
             </div>
