@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   Languages, Zap, ShieldAlert, MapPin, Clock, Cpu, 
@@ -145,15 +144,20 @@ export const GrammarLQA: React.FC = () => {
     }
   };
 
-  const speakWithGoogleTTS = useCallback((text: string) => {
+  const speakWithWebSpeech = useCallback((text: string) => {
     if (!text) return;
-    const encodedText = encodeURIComponent(text);
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=vi&client=tw-ob`;
-    const audio = new Audio(ttsUrl);
-    setIsSpeaking(true);
-    audio.play().catch(() => {}).finally(() => { 
-      audio.onended = () => setIsSpeaking(false); 
-    });
+    
+    // Hủy các yêu cầu phát âm trước đó
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
   }, []);
 
   const quickTranslate = async (text: string, targetSlot: 'subject') => {
@@ -319,7 +323,7 @@ export const GrammarLQA: React.FC = () => {
     <div className="relative group/word inline-flex items-center">
       <div 
         className={`lqa-word-item flex items-center gap-1 transition-all duration-300 hover:scale-105 ${colorClass} ${decorationClass} px-1.5 landscape:px-3 py-1 rounded-lg relative z-20 whitespace-nowrap font-black cursor-pointer`}
-        onClick={() => speakWithGoogleTTS(text)}
+        onClick={() => speakWithWebSpeech(text)}
       >
         <span className="lqa-word-text">{text}</span>
         {isMain && <span className={`absolute -inset-1 blur-sm rounded-lg -z-10 group-hover/word:bg-white/10 transition-all ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'}`}></span>}
@@ -341,7 +345,7 @@ export const GrammarLQA: React.FC = () => {
         <div className="absolute top-full left-0 mt-2 w-max z-[10000] animate-in slide-in-from-top-2">
           <div className={`border rounded-xl shadow-2xl p-1 min-w-[140px] landscape:min-w-[200px] ${theme === 'dark' ? 'bg-slate-900 border-amber-500/40' : 'bg-white border-amber-500/20'}`}>
             {WH_QUESTIONS.map((v, i) => (
-              <button key={i} onClick={(e) => { e.stopPropagation(); updateWhQuestion(i); speakWithGoogleTTS(v.vi); setShowWhDropdown(false); }} className={`lqa-inquiry-option w-full px-3 py-3 text-left text-[11px] landscape:text-base font-black uppercase tracking-widest transition-colors rounded-lg ${whIdx === i ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <button key={i} onClick={(e) => { e.stopPropagation(); updateWhQuestion(i); speakWithWebSpeech(v.vi); setShowWhDropdown(false); }} className={`lqa-inquiry-option w-full px-3 py-3 text-left text-[11px] landscape:text-base font-black uppercase tracking-widest transition-colors rounded-lg ${whIdx === i ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:bg-slate-800'}`}>
                 {v.vi}
               </button>
             ))}
@@ -402,7 +406,7 @@ export const GrammarLQA: React.FC = () => {
             </div>
 
             <div className="w-full landscape:w-auto flex flex-col landscape:flex-row items-center gap-2">
-              <button onClick={() => speakWithGoogleTTS(getFullSentenceVi())} className={`lqa-listen-btn flex items-center gap-1.5 px-8 py-3 rounded-xl transition-all font-black text-[11px] uppercase tracking-widest ${theme === 'dark' ? 'bg-slate-800 text-amber-400 border-amber-500/30' : 'bg-slate-100 text-amber-700'}`}>
+              <button onClick={() => speakWithWebSpeech(getFullSentenceVi())} className={`lqa-listen-btn flex items-center gap-1.5 px-8 py-3 rounded-xl transition-all font-black text-[11px] uppercase tracking-widest ${theme === 'dark' ? 'bg-slate-800 text-amber-400 border-amber-500/30' : 'bg-slate-100 text-amber-700'}`}>
                 <Volume2 className="w-3.5 h-3.5" /> <span>{t.listen}</span>
               </button>
               <div className={`lqa-mode-display px-4 py-3 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] border ${theme === 'dark' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
