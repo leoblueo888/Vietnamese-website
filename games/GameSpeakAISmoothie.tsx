@@ -3,6 +3,7 @@ import { Mic, MicOff, Send, Volume2, Play, Globe, Gauge, Maximize, Minimize } fr
 import { generateContentWithRetry } from '../config/apiKeys';
 import type { AIFriend } from '../types';
 
+
 // --- DICTIONARY & CONFIG ---
 const DICTIONARY: Record<string, { EN: string; type: string }> = {
   "nước ép": { EN: "fruit juice", type: "Noun" },
