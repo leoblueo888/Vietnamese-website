@@ -66,10 +66,11 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
   const audioRef = useRef(new Audio());
   const recognitionRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
+  const autoSendTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const t = LANGUAGES[selectedLang];
 
-  // --- TTS LOGIC (CHỈ ĐỌC TIẾNG VIỆT) ---
+  // --- TTS LOGIC ---
   const speak = async (fullText: string, msgId: string | null = null) => {
     if (!fullText) return;
     if (msgId) setActiveVoiceId(msgId);
@@ -110,40 +111,19 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
     setActiveVoiceId(null);
   };
 
-  // --- RECOGNITION ---
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'vi-VN';
-      recognition.onstart = () => setIsRecording(true);
-      recognition.onresult = (event: any) => {
-        let text = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) text += event.results[i][0].transcript;
-        setUserInput(text);
-      };
-      recognition.onend = () => setIsRecording(false);
-      recognitionRef.current = recognition;
-    }
-  }, []);
-
-  // --- LOGIC XỬ LÝ CHÍNH ---
+  // --- GỬI TIN NHẮN ---
   const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isProcessingRef.current) return;
+    const cleanText = text.trim();
+    if (!cleanText || isProcessingRef.current) return;
+    
+    // Clear timer nếu có
+    if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
+    
     isProcessingRef.current = true;
     setIsThinking(true);
-
     const userMsgId = `user-${Date.now()}`;
     
-    // 1. Dùng functional update để thêm tin nhắn User
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      text: text.trim(), 
-      id: userMsgId, 
-      translation: null // Sẽ được Gemini cập nhật sau
-    }]);
+    setMessages(prev => [...prev, { role: 'user', text: cleanText, id: userMsgId, translation: null }]);
     setUserInput("");
 
     try {
@@ -152,7 +132,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         contents: [...messages.map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
           parts: [{ text: m.text }]
-        })), { role: 'user', parts: [{ text: text.trim() }] }],
+        })), { role: 'user', parts: [{ text: cleanText }] }],
         config: {
           systemInstruction: `You are Hạnh, a 20-year-old fruit seller.
           STRICT FORMAT: 
@@ -168,25 +148,61 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         const aiResponseFull = raw.split(/USER_TRANSLATION:/i)[0].trim();
         const aiMsgId = `ai-${Date.now()}`;
 
-        // 2. Dùng functional update ĐỂ CẬP NHẬT CẢ HAI: 
-        // - Gán translation cho tin nhắn User vừa gửi
-        // - Thêm tin nhắn mới của AI
         setMessages(prev => {
-          return prev.map(m => 
-            m.id === userMsgId ? { ...m, translation: userTransValue } : m
-          ).concat({ 
-            role: 'ai', 
-            text: aiResponseFull, 
-            id: aiMsgId 
-          });
+          return prev.map(m => m.id === userMsgId ? { ...m, translation: userTransValue } : m)
+                     .concat({ role: 'ai', text: aiResponseFull, id: aiMsgId });
         });
-
         await speak(aiResponseFull, aiMsgId);
       }
     } catch (e) { console.error(e); }
     finally { setIsThinking(false); isProcessingRef.current = false; }
   };
 
+  // --- RECOGNITION + AUTO SEND LOGIC ---
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true; // Để mic luôn mở khi đang nói
+      recognition.interimResults = true;
+      recognition.lang = 'vi-VN';
+
+      recognition.onstart = () => setIsRecording(true);
+      
+      recognition.onresult = (event: any) => {
+        let text = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          text += event.results[i][0].transcript;
+        }
+        setUserInput(text);
+
+        // --- BỘ ĐẾM AUTO SEND 2.5s ---
+        if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
+        
+        autoSendTimerRef.current = setTimeout(() => {
+          if (text.trim()) {
+            recognition.stop(); // Ngắt mic để xử lý
+            handleSendMessage(text);
+          }
+        }, 2500); 
+      };
+
+      recognition.onend = () => setIsRecording(false);
+      recognitionRef.current = recognition;
+    }
+    return () => { if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current); };
+  }, [messages]); // Dependency messages để handleSendMessage có context mới nhất
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+    } else {
+      setUserInput("");
+      recognitionRef.current?.start();
+    }
+  };
+
+  // --- RENDER HELPERS ---
   const renderInteractiveText = (text: string) => {
     const sortedKeys = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
     let result: any[] = [];
@@ -204,7 +220,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
         result.push(
           <span key={remaining.length} className="group relative inline-block border-b border-dotted border-emerald-400 cursor-help font-bold text-emerald-800">
             {match.original}
-            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-800 text-white text-[10px] p-2 rounded-xl z-50 shadow-xl">
+            <span className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-800 text-white text-[10px] p-2 rounded-xl z-50">
               <div className={`font-black uppercase mb-1 ${color}`}>{match.info.type}</div>
               <div className="font-bold">{match.info.EN}</div>
             </span>
@@ -217,11 +233,6 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
       }
     }
     return result;
-  };
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) { gameContainerRef.current?.requestFullscreen(); setIsFullscreen(true); }
-    else { document.exitFullscreen(); setIsFullscreen(false); }
   };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -256,7 +267,6 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
   return (
     <div ref={gameContainerRef} className="w-full h-full bg-slate-900 flex items-center justify-center md:p-4 overflow-hidden relative font-sans">
       <div className="w-full h-full max-w-6xl bg-white md:rounded-[3rem] flex flex-col md:flex-row overflow-hidden shadow-2xl">
-        {/* Sidebar */}
         <div className="h-[20vh] md:h-full md:w-1/3 bg-emerald-50/50 p-4 md:p-10 flex flex-row md:flex-col items-center justify-between border-b md:border-r border-emerald-100 shrink-0 z-20">
           <div className="flex flex-row md:flex-col items-center gap-6">
             <img src={character.avatarUrl} className="w-20 h-20 md:w-56 md:h-56 rounded-full border-4 border-white shadow-xl object-cover" alt="Hanh" />
@@ -265,21 +275,17 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
               <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">{t.ui_status}</span>
             </div>
           </div>
-          <button onClick={() => isRecording ? recognitionRef.current?.stop() : recognitionRef.current?.start()} className={`w-14 h-14 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-xl ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-100' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+          <button onClick={toggleRecording} className={`w-14 h-14 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all shadow-xl ${isRecording ? 'bg-red-500 animate-pulse ring-8 ring-red-100' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
             {isRecording ? <MicOff color="white" size={28} /> : <Mic color="white" size={28} />}
           </button>
         </div>
 
-        {/* Chat Content */}
         <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
           <header className="px-6 py-4 border-b flex items-center justify-between bg-white z-10 shadow-sm">
             <div className="flex items-center gap-2">
               <Globe size={14} className="text-emerald-500" />
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.ui_learning_title}</span>
             </div>
-            <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-emerald-600">
-              {isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}
-            </button>
           </header>
 
           <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 bg-emerald-50/10 custom-scrollbar">
@@ -298,7 +304,6 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
                       </div>
                       {msg.role === 'ai' && <button onClick={() => speak(msg.text, msg.id)} className="opacity-50 hover:opacity-100"><Volume2 size={20}/></button>}
                     </div>
-                    {/* Render Translation theo đúng message object */}
                     {(msg.role === 'ai' ? transText : msg.translation) && (
                       <div className={`mt-3 pt-3 border-t text-[11px] italic font-medium ${msg.role === 'user' ? 'border-emerald-500 text-emerald-100' : 'border-slate-50 text-slate-400'}`}>
                         {msg.role === 'ai' ? transText : msg.translation}
@@ -314,7 +319,7 @@ export const HanhAIfruitseller: React.FC<{ character: AIFriend }> = ({ character
 
           <footer className="p-6 md:p-8 bg-white border-t flex gap-3 pb-10">
             <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder={t.ui_placeholder} className="flex-1 px-6 py-4 bg-slate-100 rounded-[1.5rem] outline-none font-bold focus:bg-white focus:ring-4 ring-emerald-50 shadow-inner" />
-            <button onClick={() => handleSendMessage(userInput)} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:scale-105 active:scale-95 transition-all"><Send size={20}/></button>
+            <button onClick={() => handleSendMessage(userInput)} className="bg-orange-500 text-white px-8 rounded-[1.5rem] shadow-lg hover:scale-105 transition-all"><Send size={20}/></button>
           </footer>
         </div>
       </div>
