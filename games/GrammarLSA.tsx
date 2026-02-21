@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   Languages, Zap, ShieldAlert, MapPin, Clock, Cpu, 
@@ -211,15 +210,22 @@ export const GrammarLSA: React.FC = () => {
     }
   }, [currentData, mode, inquiryVariantIdx, adjustFontSize, gameStarted]);
 
+  // THAY ĐỔI Ở ĐÂY: Dùng Web Speech API thay vì Google TTS URL
   const speakWithGoogleTTS = useCallback((text: string) => {
-    if (!text) return;
-    const encodedText = encodeURIComponent(text);
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=vi&client=tw-ob`;
-    const audio = new Audio(ttsUrl);
-    setIsSpeaking(true);
-    audio.play().catch(() => {}).finally(() => { 
-      audio.onended = () => setIsSpeaking(false); 
-    });
+    if (!text || typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    // Hủy các giọng đọc đang chờ
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    utterance.rate = 0.9; // Tốc độ tự nhiên hơn
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
   }, []);
 
   const callGemini = async (prompt: string) => {
@@ -555,64 +561,15 @@ export const GrammarLSA: React.FC = () => {
               <footer className={`lsa-footer p-4 landscape:p-5 border-t z-10 flex items-center justify-center shrink-0 ${theme === 'dark' ? 'border-slate-800 bg-slate-950/50' : 'border-slate-100 bg-slate-50'}`}>
                 <div className="w-full flex flex-col items-center justify-center text-center">
                   <p className="lsa-translation-label text-[9px] landscape:hidden font-black text-cyan-500 uppercase tracking-widest mb-1">{t.translation}</p>
-                  <p className={`lsa-translation-text text-[14px] sm:text-[16px] landscape:text-2xl font-bold tracking-tight leading-snug max-w-2xl px-4 ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
+                  <p className={`lsa-translation-text text-[14px] sm:text-[16px] landscape:text-2xl font-bold tracking-tight leading-snug max-w-2xl px-4 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     {getFullSentenceTranslation()}
                   </p>
                 </div>
               </footer>
             </div>
           </main>
-
         </div>
       </div>
-       <button 
-        onClick={toggleFullscreen}
-        className="absolute bottom-1 left-1 z-50 p-1.5 bg-black/10 text-white/50 rounded-full backdrop-blur-sm shadow-md opacity-40 hover:opacity-100 transition-all"
-        aria-label="Toggle fullscreen"
-      >
-        {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-      </button>
-      <style>{`
-        .lsa-game-root:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; padding: 0; }
-        .lsa-game-root:fullscreen .lsa-game-wrapper {
-            width: min(100vw, 177.78vh);
-            height: min(100vh, 56.25vw);
-            overflow: hidden;
-            border-radius: 0;
-        }
-
-        /* VMIN Scaling for Fullscreen */
-        .lsa-game-root:fullscreen .lsa-header { padding: 1.5vmin; flex-direction: row; }
-        .lsa-game-root:fullscreen .lsa-header > div { width: auto; }
-        .lsa-game-root:fullscreen .lsa-theme-btn { padding: 1.2vmin; border-radius: 1vmin; }
-        .lsa-game-root:fullscreen .lsa-theme-icon { width: 3vmin; height: 3vmin; }
-        .lsa-game-root:fullscreen .lsa-title { font-size: 1.8vmin; }
-        .lsa-game-root:fullscreen .lsa-listen-btn { padding: 1.5vmin 3vmin; font-size: 1.2vmin; border-radius: 1vmin; }
-        .lsa-game-root:fullscreen .lsa-listen-btn svg { width: 2vmin; height: 2vmin; }
-        .lsa-game-root:fullscreen .lsa-mode-switcher { padding: 0.5vmin; border-radius: 1vmin; }
-        .lsa-game-root:fullscreen .lsa-mode-btn { padding: 1.2vmin 2vmin; font-size: 1.2vmin; border-radius: 0.8vmin; }
-
-        .lsa-game-root:fullscreen .lsa-main { flex-direction: column-reverse; }
-        .lsa-game-root:fullscreen .lsa-controls-container { flex-direction: row; }
-        .lsa-game-root:fullscreen .lsa-controls-container > div { display: flex; flex-direction: row; }
-        .lsa-game-root:fullscreen .lsa-control-module { padding: 1.5vmin; width: 33.33%; border-right: 0.1vmin solid; border-top: 0.1vmin solid; }
-        .lsa-game-root:fullscreen .lsa-control-label { font-size: 1vmin; }
-        .lsa-game-root:fullscreen .lsa-control-translation { font-size: 1.1vmin; }
-        .lsa-game-root:fullscreen .lsa-select-display { font-size: 1.3vmin; padding: 1.2vmin; }
-        .lsa-game-root:fullscreen .lsa-custom-input { font-size: 1.3vmin; padding: 1.2vmin; }
-
-        .lsa-game-root:fullscreen .lsa-sentence-container { padding: 2vmin; }
-        .lsa-game-root:fullscreen .lsa-sentence-content > div:first-child { transform: none !important; }
-        .lsa-game-root:fullscreen .lsa-sentence-content { font-size: 12vmin; gap: 2.5vmin; }
-        .lsa-game-root:fullscreen .lsa-word-item { padding: 0.5vmin 2vmin; border-radius: 1.5vmin; }
-        .lsa-game-root:fullscreen .lsa-word-text { font-size: inherit; }
-        .lsa-game-root:fullscreen .lsa-dropdown-icon { width: 4vmin; height: 4vmin; }
-        .lsa-game-root:fullscreen .lsa-inquiry-option { font-size: 2vmin; }
-        .lsa-game-root:fullscreen .lsa-tooltip-text { font-size: 2vmin; }
-
-        .lsa-game-root:fullscreen .lsa-footer { padding: 2vmin; }
-        .lsa-game-root:fullscreen .lsa-translation-text { font-size: 3vmin; }
-      `}</style>
     </div>
   );
 };
