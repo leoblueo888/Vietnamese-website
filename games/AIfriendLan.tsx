@@ -5,6 +5,7 @@ import { generateContentWithRetry } from '../config/apiKeys';
 
 const DICTIONARY = {
   "cơm": { EN: "cooked rice / meal", type: "Noun" },
+  
   "tên": { EN: "name", type: "Noun" },
   "Việt Nam": { EN: "Vietnam", type: "Noun" },
   "Hạ Long": { EN: "Ha Long Bay", type: "Noun" },
