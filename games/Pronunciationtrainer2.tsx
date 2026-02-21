@@ -30,14 +30,13 @@ const TRANSLATIONS = {
     step1: "Выберите дифтонг или комбинацию из библиотеки.",
     step2: "Прослушайте эталонное произношение (иконка динамика).",
     step3: "Посмотрите значение и примеры предложений.",
-    tabV: "Дифтонг", tabCV: "Согласный + Дифтонг", tabVC: "Дифтоng + Согласный", tabCVC: "Сог1 + Дифтонг + Сог2",
+    tabV: "Дифтонг", tabCV: "Согласный + Дифтонг", tabVC: "Дифтонг + Согласный", tabCVC: "Сог1 + Дифтонг + Сог2",
     mobV: "Dip", mobCV: "Con + Dip", mobVC: "Dip + Con", mobCVC: "Con1 + Dip + Con2",
     prefixLabel: "Префикс_Согласная", footer: "Движок: Gemini 2.5 Flash",
     contextTitle: "Контекст", backBtn: "Выход"
   }
 };
 
-// ... (Giữ nguyên các hàm addTone, isVietnameseCombo, DIPHTHONG_BASES cũ của ông) ...
 const isVietnameseCombo = (prefix: string, rhymeBase: string, tone: string) => {
   if (!prefix) {
     const stopConsonants = ['p', 't', 'c', 'ch'];
@@ -135,31 +134,67 @@ export function GamePronunciationTrainer2() {
     vowels: generateValidTones(base, prefix)
   })).filter(family => family.vowels.length > 0);
 
-  // --- AUDIO CHUẨN (GOOGLE TRANSLATE TTS) ---
+  // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
+  const audioRef = useRef(new Audio());
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
 
   const playNextInQueue = useCallback(() => {
-    if (audioQueueRef.current.length === 0) { isPlayingRef.current = false; return; }
+    if (audioQueueRef.current.length === 0) { 
+      isPlayingRef.current = false; 
+      return; 
+    }
+    
     isPlayingRef.current = true;
     const text = audioQueueRef.current.shift();
-    if (!text) return;
+    if (!text) {
+      playNextInQueue();
+      return;
+    }
 
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=vi&client=tw-ob`;
-    const audio = new Audio(url);
-    audio.onended = () => playNextInQueue();
-    audio.onerror = () => playNextInQueue();
-    audio.play().catch(() => playNextInQueue());
+    // Clean text trước khi đọc
+    const cleanText = text.replace(/[*_`#"]/g, '').trim();
+    
+    // Dùng proxy API thay vì Google trực tiếp
+    const url = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=vi`;
+    audioRef.current.src = url;
+    audioRef.current.playbackRate = 1.0;
+    
+    audioRef.current.onended = () => playNextInQueue();
+    audioRef.current.onerror = () => {
+      // Fallback khi lỗi API
+      const fallback = new SpeechSynthesisUtterance(cleanText);
+      fallback.lang = 'vi-VN';
+      fallback.onend = () => playNextInQueue();
+      window.speechSynthesis.speak(fallback);
+    };
+    
+    audioRef.current.play().catch(() => {
+      // Fallback khi play lỗi
+      const fallback = new SpeechSynthesisUtterance(cleanText);
+      fallback.lang = 'vi-VN';
+      fallback.onend = () => playNextInQueue();
+      window.speechSynthesis.speak(fallback);
+    });
   }, []);
 
-  const playCorrectSound = (text: string) => {
+  const playCorrectSound = useCallback((text: string) => {
     if (!text || text === "...") return;
+    
+    // Dừng âm thanh đang phát
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    audioRef.current.pause();
+    
     isPlayingRef.current = false;
     audioQueueRef.current = [];
-    const chunks = text.match(/.{1,170}(\s|$)/g) || [text];
+    
+    // Clean text và chia nhỏ nếu cần
+    const cleanText = text.replace(/[*_`#"]/g, '').trim();
+    const chunks = cleanText.match(/.{1,170}(\s|$)/g) || [cleanText];
     audioQueueRef.current = chunks;
+    
     if (!isPlayingRef.current) playNextInQueue();
-  };
+  }, [playNextInQueue]);
 
   // --- LOGIC AI (GỌI ĐÚNG THEO CẤU TRÚC Chatbot) ---
   useEffect(() => {
@@ -317,7 +352,10 @@ export function GamePronunciationTrainer2() {
                     <div className="text-cyan-400 font-mono text-[9px] lg:text-sm uppercase tracking-[0.1em] lg:tracking-[0.2em] animate-in fade-in slide-in-from-left-2 duration-300 line-clamp-1">{wordDetails.meaning}</div>
                   )}
                 </div>
-                <button onClick={() => playCorrectSound(currentFullWord)} className="w-10 h-10 lg:w-16 lg:h-16 bg-cyan-500 hover:bg-cyan-400 text-black rounded-full flex items-center justify-center shadow-lg active:scale-90 shrink-0 transition-all relative z-50 touch-manipulation">
+                <button 
+                  onClick={() => playCorrectSound(currentFullWord)} 
+                  className="w-10 h-10 lg:w-16 lg:h-16 bg-cyan-500 hover:bg-cyan-400 text-black rounded-full flex items-center justify-center shadow-lg active:scale-90 shrink-0 transition-all relative z-50 touch-manipulation"
+                >
                   <Volume2 className="w-5 h-5 lg:w-6 lg:h-6 pointer-events-none" />
                 </button>
               </div>
@@ -327,7 +365,10 @@ export function GamePronunciationTrainer2() {
                   <>
                     <div className="flex items-center justify-between mb-1 lg:mb-0">
                       <div className="text-[7px] lg:text-[11px] font-mono text-cyan-400/40 uppercase tracking-[0.3em]">{t.contextTitle}</div>
-                      <button onClick={(e) => { e.stopPropagation(); playCorrectSound(wordDetails.combo as string); }} className="p-1 lg:p-2 bg-white/5 hover:bg-white/10 rounded-full text-cyan-400 transition-colors relative z-50 touch-manipulation">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); playCorrectSound(wordDetails.combo as string); }} 
+                        className="p-1 lg:p-2 bg-white/5 hover:bg-white/10 rounded-full text-cyan-400 transition-colors relative z-50 touch-manipulation"
+                      >
                         <Volume1 size={14} className="lg:w-[18px] lg:h-[18px] pointer-events-none" />
                       </button>
                     </div>
