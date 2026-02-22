@@ -11,15 +11,18 @@ export const Chatbot: React.FC = () => {
 
     const knowledgeBaseRef = useRef<string>("");
     const langRef = useRef(currentLang);
-    const recognitionRef = useRef<any | null>(null);
     const chatBodyRef = useRef<HTMLDivElement>(null);
-    
+
     // Audio refs
     const audioRef = useRef(new Audio());
     const audioQueueRef = useRef<string[]>([]);
     const isPlayingRef = useRef(false);
 
-    // Ảnh đại diện mới của Trang từ Drive 
+    // Speech recognition refs
+    const recognitionRef = useRef<any>(null);
+    const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const finalTranscriptRef = useRef<string>('');
+
     const TRANG_AVATAR = "https://lh3.googleusercontent.com/d/1qZb1rHs-Ahs5hDQJTh4CTDiwULXRKB1B";
 
     const translations = {
@@ -41,9 +44,9 @@ export const Chatbot: React.FC = () => {
         }
     };
 
-    // ✅ FIX: Luôn đồng bộ langRef ngay khi currentLang thay đổi
-    useEffect(() => { 
-        langRef.current = currentLang; 
+    // ✅ Sync langRef ngay khi currentLang thay đổi
+    useEffect(() => {
+        langRef.current = currentLang;
     }, [currentLang]);
 
     // Load kiến thức từ Google Docs
@@ -58,39 +61,29 @@ export const Chatbot: React.FC = () => {
         loadKnowledge();
     }, []);
 
-    // --- ✅ FIX: LẮNG NGHE CustomEvent VỚI detail.lang TỪ HEADER ---
+    // ✅ Lắng nghe CustomEvent languageChanged từ Header
     useEffect(() => {
         const handleLangChange = (e: Event) => {
-            // ✅ Đọc lang trực tiếp từ event detail, không đọc localStorage
             const newLang = (e as CustomEvent).detail?.lang as 'en' | 'ru';
-            
             if (!newLang || newLang === langRef.current) return;
 
-            console.log("🔄 Chatbot: Ngôn ngữ thay đổi thành", newLang);
-
-            // ✅ Update ref NGAY LẬP TỨC trước khi setState để TTS dùng đúng lang
             langRef.current = newLang;
             setCurrentLang(newLang);
-            
-            // Reset messages với lời chào bằng ngôn ngữ mới
             setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
-            
-            // Nếu chat đang mở, đọc lời chào bằng ngôn ngữ mới
+
             if (isOpen) {
                 setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
             }
         };
 
-        // ✅ Lắng nghe CustomEvent 'languageChanged' từ Header
         window.addEventListener('languageChanged', handleLangChange);
-        
-        return () => { 
-            window.removeEventListener('languageChanged', handleLangChange); 
+        return () => {
+            window.removeEventListener('languageChanged', handleLangChange);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
-    // --- CLEAN TEXT FUNCTION ---
+    // --- CLEAN TEXT ---
     const cleanText = useCallback((text: string) => {
         return text
             .replace(/[*_`#|]/g, '')
@@ -115,41 +108,30 @@ export const Chatbot: React.FC = () => {
         return chunks;
     }, []);
 
-    // --- AUDIO ĐÃ SỬA DÙNG PROXY VÀ FALLBACK ---
+    // --- AUDIO PLAYBACK ---
     const playNextInQueue = useCallback(() => {
         if (audioQueueRef.current.length === 0) {
             isPlayingRef.current = false;
             return;
         }
-        
         isPlayingRef.current = true;
         const text = audioQueueRef.current.shift();
-        if (!text) {
-            playNextInQueue();
-            return;
-        }
+        if (!text) { playNextInQueue(); return; }
 
-        // ✅ Đọc từ langRef.current (luôn mới nhất) thay vì closure cũ
         const langCode = langRef.current === 'ru' ? 'ru' : 'en';
-        
-        // Dùng proxy API
         const url = `/api/tts?text=${encodeURIComponent(text)}&lang=${langCode}`;
-        
+
         audioRef.current.src = url;
         audioRef.current.playbackRate = 1.0;
-        
         audioRef.current.onended = () => playNextInQueue();
         audioRef.current.onerror = () => {
-            // Fallback khi lỗi API
             const fallback = new SpeechSynthesisUtterance(text);
             fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
             fallback.rate = 1.0;
             fallback.onend = () => playNextInQueue();
             window.speechSynthesis.speak(fallback);
         };
-        
         audioRef.current.play().catch(() => {
-            // Fallback khi play lỗi
             const fallback = new SpeechSynthesisUtterance(text);
             fallback.lang = langCode === 'ru' ? 'ru-RU' : 'en-US';
             fallback.rate = 1.0;
@@ -160,33 +142,112 @@ export const Chatbot: React.FC = () => {
 
     const speakStandard = useCallback((text: string) => {
         if (!text) return;
-        
-        // Dừng mọi âm thanh cũ
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         audioRef.current.pause();
-        
         isPlayingRef.current = false;
         audioQueueRef.current = [];
-        
         const cleanedText = cleanText(text);
         const chunks = createChunks(cleanedText);
-        
         audioQueueRef.current = chunks;
         if (!isPlayingRef.current) playNextInQueue();
     }, [cleanText, createChunks, playNextInQueue]);
 
+    // ✅ Dùng ref để tránh stale closure trong silence timer
+    const handleSendMessageRef = useRef<(text: string) => void>(() => {});
+
+    // ✅ STOP RECORDING
+    const stopRecording = useCallback(() => {
+        if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+        }
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+            recognitionRef.current = null;
+        }
+        setIsRecording(false);
+    }, []);
+
+    // ✅ START RECORDING — mic icon, live transcript in input, 2.5s silence auto-send
+    const startRecording = useCallback(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Trình duyệt của bạn không hỗ trợ nhận dạng giọng nói. Hãy dùng Chrome.');
+            return;
+        }
+
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+            recognitionRef.current = null;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+
+        // Ngôn ngữ nhận dạng theo lang hiện tại
+        recognition.lang = langRef.current === 'ru' ? 'ru-RU' : 'en-US';
+        recognition.continuous = true;
+        recognition.interimResults = true; // ✅ Hiện text realtime khi đang nói
+
+        finalTranscriptRef.current = '';
+        setIsRecording(true);
+        setInputValue('');
+
+        // ✅ Xử lý kết quả realtime — hiện vào input box
+        recognition.onresult = (event: any) => {
+            let interimTranscript = '';
+            let finalTranscript = finalTranscriptRef.current;
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript + ' ';
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+
+            finalTranscriptRef.current = finalTranscript;
+
+            // ✅ Hiện text đang nói vào input box
+            setInputValue((finalTranscript + interimTranscript).trim());
+
+            // ✅ Reset silence timer — 2.5 giây sau khi ngừng nói thì tự gửi
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = setTimeout(() => {
+                const textToSend = finalTranscriptRef.current.trim() || interimTranscript.trim();
+                stopRecording();
+                if (textToSend) {
+                    handleSendMessageRef.current(textToSend);
+                }
+            }, 2500);
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error:', event.error);
+            stopRecording();
+        };
+
+        recognition.onend = () => {
+            if (!silenceTimerRef.current) {
+                setIsRecording(false);
+            }
+        };
+
+        recognition.start();
+    }, [stopRecording]);
+
     const handleSendMessage = useCallback(async (messageText: string) => {
         const trimmedMessage = messageText.trim();
         if (!trimmedMessage || isLoadingAI) return;
-        
+
         setMessages(prev => [...prev, { text: trimmedMessage, isBot: false }]);
         setInputValue('');
         setIsLoadingAI(true);
 
         try {
-            // ✅ Đọc từ langRef.current để luôn lấy ngôn ngữ mới nhất
             const targetLang = langRef.current === 'ru' ? 'Russian' : 'English';
-            
+
             const payload = {
                 model: "gemini-2.5-flash",
                 config: {
@@ -206,7 +267,7 @@ export const Chatbot: React.FC = () => {
 
             const response = await generateContentWithRetry(payload);
             const aiText = response.text || (langRef.current === 'ru' ? "Свяжитесь с поддержкой." : "Contact support.");
-            
+
             setMessages(prev => [...prev, { text: aiText, isBot: true }]);
             speakStandard(aiText);
         } catch (error) {
@@ -218,6 +279,31 @@ export const Chatbot: React.FC = () => {
         }
     }, [isLoadingAI, messages, speakStandard]);
 
+    // ✅ Cập nhật ref mỗi khi handleSendMessage thay đổi
+    useEffect(() => {
+        handleSendMessageRef.current = handleSendMessage;
+    }, [handleSendMessage]);
+
+    // ✅ Toggle mic
+    const handleMicClick = useCallback(() => {
+        if (isRecording) {
+            const currentText = finalTranscriptRef.current.trim();
+            stopRecording();
+            if (currentText) {
+                handleSendMessageRef.current(currentText);
+            }
+        } else {
+            startRecording();
+        }
+    }, [isRecording, startRecording, stopRecording]);
+
+    // Cleanup khi unmount
+    useEffect(() => {
+        return () => {
+            stopRecording();
+        };
+    }, [stopRecording]);
+
     return (
         <>
             <style>{`
@@ -226,13 +312,16 @@ export const Chatbot: React.FC = () => {
                 .dot-flashing { width: 6px; height: 6px; border-radius: 5px; background-color: #1e5aa0; animation: dotFlashing 1s infinite alternate; }
                 @keyframes dotFlashing { 0% { opacity: 0.3; } 100% { opacity: 1; } }
                 .no-scrollbar::-webkit-scrollbar { display: none; }
+                @keyframes micPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+                .mic-recording { animation: micPulse 1.2s ease-in-out infinite; }
             `}</style>
 
-            <button 
-                onClick={() => { 
-                    setIsOpen(!isOpen); 
-                    if(!isOpen) setTimeout(() => speakStandard(translations[currentLang].initialMessage), 500); 
-                }} 
+            {/* Floating button */}
+            <button
+                onClick={() => {
+                    setIsOpen(!isOpen);
+                    if (!isOpen) setTimeout(() => speakStandard(translations[currentLang].initialMessage), 500);
+                }}
                 className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 animate-float"
             >
                 <span className="hidden md:block bg-white px-4 py-1.5 rounded-full shadow-lg text-[#1e5aa0] font-bold text-sm border">
@@ -243,7 +332,10 @@ export const Chatbot: React.FC = () => {
                 </div>
             </button>
 
+            {/* Chat window */}
             <div className={`fixed bottom-24 right-6 w-[340px] h-[520px] bg-white rounded-3xl shadow-2xl border flex flex-col transition-all z-50 ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
+
+                {/* Header */}
                 <div className="p-4 bg-slate-50 rounded-t-3xl border-b flex flex-col items-center relative">
                     <img src={TRANG_AVATAR} className="w-14 h-14 rounded-full object-cover mb-1 border-2 border-white shadow-sm" alt="Trang" />
                     <h3 className="font-bold text-slate-800 text-sm">Trang Assistant</h3>
@@ -251,6 +343,7 @@ export const Chatbot: React.FC = () => {
                     <button onClick={() => setIsOpen(false)} className="absolute top-3 right-5 text-xl text-slate-400">×</button>
                 </div>
 
+                {/* Messages */}
                 <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white no-scrollbar">
                     {messages.length === 0 ? (
                         <div className="flex justify-start">
@@ -270,7 +363,9 @@ export const Chatbot: React.FC = () => {
                     {isLoadingAI && <div className="flex justify-start ml-4"><div className="dot-flashing"></div></div>}
                 </div>
 
+                {/* Input area */}
                 <div className="p-4 border-t space-y-3">
+                    {/* Quick replies */}
                     <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                         {translations[currentLang].quickReplies.map(text => (
                             <button key={text} onClick={() => handleSendMessage(text)} className="whitespace-nowrap text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-bold hover:bg-blue-100">
@@ -278,22 +373,51 @@ export const Chatbot: React.FC = () => {
                             </button>
                         ))}
                     </div>
+
+                    {/* Input row */}
                     <div className="flex items-center gap-2">
-                        <input 
-                            value={inputValue} 
-                            onChange={(e) => setInputValue(e.target.value)} 
-                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)} 
-                            className="flex-1 p-2.5 bg-slate-50 border rounded-2xl outline-none text-sm" 
-                            placeholder={translations[currentLang].placeholder} 
+                        <input
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && !isRecording && handleSendMessage(inputValue)}
+                            className={`flex-1 p-2.5 bg-slate-50 border rounded-2xl outline-none text-sm transition-all ${isRecording ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-200'}`}
+                            placeholder={isRecording ? translations[currentLang].listening : translations[currentLang].placeholder}
+                            readOnly={isRecording}
                         />
-                        <button 
-                            onClick={() => handleSendMessage(inputValue)} 
+
+                        {/* ✅ Mic button */}
+                        <button
+                            onClick={handleMicClick}
                             disabled={isLoadingAI}
-                            className="w-10 h-10 bg-[#1e5aa0] rounded-2xl flex items-center justify-center text-white disabled:opacity-50"
+                            title={isRecording ? 'Dừng ghi âm' : 'Bắt đầu ghi âm'}
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all disabled:opacity-50 ${
+                                isRecording
+                                    ? 'bg-red-500 text-white mic-recording'
+                                    : 'bg-[#1e5aa0] text-white hover:bg-blue-800'
+                            }`}
                         >
-                            🚀
+                            {isRecording ? (
+                                // Icon stop khi đang record
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                                </svg>
+                            ) : (
+                                // Icon mic khi không record
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 4v6a2 2 0 0 0 4 0V5a2 2 0 0 0-4 0z"/>
+                                    <path d="M19 10a1 1 0 0 1 1 1 8 8 0 0 1-16 0 1 1 0 1 1 2 0 6 6 0 0 0 12 0 1 1 0 0 1 1-1z"/>
+                                    <path d="M12 19a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/>
+                                </svg>
+                            )}
                         </button>
                     </div>
+
+                    {/* ✅ Indicator đang ghi âm */}
+                    {isRecording && (
+                        <p className="text-[10px] text-red-500 font-bold text-center animate-pulse">
+                            🔴 {translations[currentLang].listening} — tự gửi sau 2.5s im lặng
+                        </p>
+                    )}
                 </div>
             </div>
         </>
