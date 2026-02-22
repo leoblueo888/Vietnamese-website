@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, Language, AuthMode } from '../App';
 import { getSpeakingUnits, getPronunciationUnits, getVocabUnits, getGrammarLevels, getAIFriends } from '../constants';
@@ -46,9 +44,11 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate, onOpenAuthModal, cur
   };
   const currentLang = languages[language];
 
+  // ✅ FIX: Lưu vào localStorage VÀ dispatch CustomEvent với detail.lang
   const handleLangChange = useCallback((lang: Language) => {
+    localStorage.setItem('app_lang', lang); // ✅ Persist ngôn ngữ vào localStorage
     onLanguageChange(lang);
-    window.dispatchEvent(new Event('languageChanged'));
+    window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang } })); // ✅ Truyền lang qua event
   }, [onLanguageChange]);
   
   const mainNavItems = [
