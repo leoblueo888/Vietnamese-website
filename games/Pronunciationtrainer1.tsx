@@ -225,7 +225,10 @@ export function Pronunciationtrainer1() {
     audioRef.current.src = url;
     audioRef.current.playbackRate = 1.0;
     
-    audioRef.current.onended = () => playNextInQueue();
+    audioRef.current.onended = () => {
+      playNextInQueue();
+    };
+    
     audioRef.current.onerror = () => {
       // Fallback khi lỗi API
       const fallback = new SpeechSynthesisUtterance(cleanTextStr);
@@ -262,18 +265,32 @@ export function Pronunciationtrainer1() {
     
     audioQueueRef.current = chunks;
     
+    // Hàm dừng loading
     const stopLoading = () => {
       if (isContext) setIsLoadingContextTTS(false);
       else setIsLoadingTTS(false);
     };
     
-    audioRef.current.onended = () => {
+    // Gán sự kiện cho audio hiện tại
+    const currentAudio = audioRef.current;
+    
+    const onFinish = () => {
       stopLoading();
       playNextInQueue();
     };
     
+    currentAudio.onended = onFinish;
+    currentAudio.onerror = onFinish;
+    
     if (!isPlayingRef.current) playNextInQueue();
-  }, [cleanText, createChunks, playNextInQueue]);
+    
+    // Fallback nếu playNextInQueue không chạy (do queue rỗng)
+    setTimeout(() => {
+      if (isLoadingTTS || isLoadingContextTTS) {
+        stopLoading();
+      }
+    }, 3000);
+  }, [cleanText, createChunks, playNextInQueue, isLoadingTTS, isLoadingContextTTS]);
 
   const fetchDefinition = async (word: string) => {
     const isValid = checkVietnameseValidity(prefixC, selectedVowel, suffixC, activeTab);
@@ -293,14 +310,30 @@ export function Pronunciationtrainer1() {
       Respond in JSON format: {"meaning": "meaning in ${targetLang} or INVALID", "example": "short example sentence in Vietnamese or INVALID", "exampleTranslation": "translation in ${targetLang} or INVALID"}.
       If the word has no common meaning, return INVALID for all fields.`;
 
-      // Sử dụng generateContentWithRetry để xoay vòng key
+      // Sửa cấu trúc đúng cho generateContentWithRetry
       const response = await generateContentWithRetry({
         model: ANALYZE_MODEL,
         contents: [{ role: 'user', parts: [{ text: promptText }] }],
-        config: { responseMimeType: "application/json" }
+        config: {
+          systemInstruction: "You are a helpful assistant that responds in JSON format."
+        }
       });
 
-      const result = JSON.parse(response.text);
+      // Xử lý response text để lấy JSON
+      let result;
+      try {
+        // Nếu response.text là string JSON
+        result = JSON.parse(response.text);
+      } catch (e) {
+        // Nếu response.text có chứa JSON trong markdown
+        const jsonMatch = response.text.match(/```json\n([\s\S]*?)\n```/) || 
+                         response.text.match(/{[\s\S]*?}/);
+        if (jsonMatch) {
+          result = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        } else {
+          throw new Error("Không thể parse JSON");
+        }
+      }
       
       const processed = {
         meaning: result.meaning === "INVALID" ? null : result.meaning,
