@@ -1,4 +1,3 @@
-
 export const translations = {
   en: {
     header: {
@@ -20,6 +19,10 @@ export const translations = {
       email: 'Email',
       joinFamily: 'JOIN OUR FAMILY',
       menu: 'MENU',
+      inviteFriend: 'Invite a Friend',
+      copied: 'Copied!',
+      logout: 'Logout',
+      guest: 'Guest',
     },
     hero: {
       title1: 'Learn Vietnamese Fast',
@@ -27,6 +30,43 @@ export const translations = {
       subtitle: 'Train your Vietnamese daily with smart tools, AI partners, and games. Learn effectively anywhere.',
       btnStart: 'Start for free',
       btnMethod: 'The Method',
+      signUp: 'Sign Up',
+      signIn: 'Sign In',
+    },
+    authModal: {
+      signIn: {
+        title: 'Welcome Back!',
+        emailOrUsername: 'Email or Username',
+        password: 'Password',
+        button: 'Sign In',
+        noAccount: "Don't have an account?",
+        signUp: 'Sign Up'
+      },
+      signUp: {
+        title: 'Create Your Account',
+        username: 'Username',
+        email: 'Email',
+        password: 'Password',
+        gender: 'Gender',
+        male: 'Male',
+        female: 'Female',
+        button: 'Sign Up',
+        haveAccount: 'Already have an account?',
+        signIn: 'Sign In',
+        otpTitle: 'Email Verification',
+        otpSent: 'Enter the 6-digit code sent to',
+        otpPlaceholder: 'Verification Code',
+        otpButton: 'Verify & Create Account',
+        resendOtp: 'Resend OTP',
+        resendCooldown: 'Resend OTP in'
+      },
+      errors: {
+        fillAll: 'Please fill in all details.',
+        invalidOtp: 'Please enter a valid 6-digit OTP.',
+        invalidCredentials: 'Invalid credentials. Please try again.',
+        sendOtpFailed: 'Failed to send OTP.',
+        verifyFailed: 'Verification failed. The code may be incorrect or expired.'
+      }
     },
     story: {
       title: 'Your Journey to Vietnamese Fluency',
@@ -242,6 +282,10 @@ export const translations = {
       email: 'Email',
       joinFamily: 'ПРИСОЕДИНЯЙТЕСЬ',
       menu: 'МЕНЮ',
+      inviteFriend: 'Пригласить друга',
+      copied: 'Скопировано!',
+      logout: 'Выйти',
+      guest: 'Гость',
     },
     hero: {
       title1: 'Учите вьетнамский быстро',
@@ -249,6 +293,43 @@ export const translations = {
       subtitle: 'Тренируйте вьетнамский ежедневно с умными инструментами, ИИ-партнерами и играми. Учитесь эффективно где угодно.',
       btnStart: 'Начать бесплатно',
       btnMethod: 'Метод',
+      signUp: 'Регистрация',
+      signIn: 'Войти',
+    },
+    authModal: {
+      signIn: {
+        title: 'С возвращением!',
+        emailOrUsername: 'Email или имя пользователя',
+        password: 'Пароль',
+        button: 'Войти',
+        noAccount: 'Нет аккаунта?',
+        signUp: 'Регистрация'
+      },
+      signUp: {
+        title: 'Создать аккаунт',
+        username: 'Имя пользователя',
+        email: 'Email',
+        password: 'Пароль',
+        gender: 'Пол',
+        male: 'Мужской',
+        female: 'Женский',
+        button: 'Зарегистрироваться',
+        haveAccount: 'Уже есть аккаунт?',
+        signIn: 'Войти',
+        otpTitle: 'Подтверждение email',
+        otpSent: 'Введите 6-значный код, отправленный на',
+        otpPlaceholder: 'Код подтверждения',
+        otpButton: 'Подтвердить и создать аккаунт',
+        resendOtp: 'Отправить код повторно',
+        resendCooldown: 'Отправить повторно через'
+      },
+      errors: {
+        fillAll: 'Пожалуйста, заполните все поля.',
+        invalidOtp: 'Введите действительный 6-значный код.',
+        invalidCredentials: 'Неверные данные. Попробуйте снова.',
+        sendOtpFailed: 'Не удалось отправить код.',
+        verifyFailed: 'Проверка не удалась. Код может быть неверным или истекшим.'
+      }
     },
     story: {
       title: 'Ваш путь к свободному вьетнамскому',
