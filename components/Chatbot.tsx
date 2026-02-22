@@ -8,10 +8,12 @@ export const Chatbot: React.FC = () => {
     const [inputValue, setInputValue] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
+    const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
     const knowledgeBaseRef = useRef<string>("");
     const langRef = useRef(currentLang);
     const chatBodyRef = useRef<HTMLDivElement>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Audio refs
     const audioRef = useRef(new Audio());
@@ -30,16 +32,22 @@ export const Chatbot: React.FC = () => {
             initialMessage: "Hi there, welcome to Truly Easy Vietnamese. How can I help you?",
             quickReplies: ['How to start?', 'Meet the teachers', 'I need help'],
             placeholder: "Type or click mic",
+            // ✅ Bilingual recording indicator
             listening: "Listening...",
-            assistantLabel: "Speak with Trang",
+            recordingHint: "Listening... — auto-send after 2.5s silence",
+            // ✅ Đổi label ngoài chatbot
+            assistantLabel: "Speak With AI Assistant",
             online: "ONLINE"
         },
         ru: {
             initialMessage: "Здравствуйте! Добро пожаловать в Truly Easy Vietnamese. Чем я могу вам помочь?",
             quickReplies: ['С чего начать?', 'Познакомиться с учителями', 'Мне нужна помощь'],
             placeholder: "Напишите или нажмите микрофон",
+            // ✅ Russian recording indicator
             listening: "Слушаю...",
-            assistantLabel: "Поговорить с Транг",
+            recordingHint: "Слушаю... — авто-отправка через 2.5с тишины",
+            // ✅ Russian label ngoài chatbot
+            assistantLabel: "Говорить с AI Ассистентом",
             online: "В СЕТИ"
         }
     };
@@ -82,6 +90,22 @@ export const Chatbot: React.FC = () => {
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
+
+    // ✅ AUTO SCROLL to newest message + highlight effect
+    useEffect(() => {
+        if (messages.length === 0) return;
+
+        // Scroll xuống cuối
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }, 50);
+
+        // Highlight tin nhắn mới nhất trong 1.5s
+        const newIndex = messages.length - 1;
+        setHighlightedIndex(newIndex);
+        const timer = setTimeout(() => setHighlightedIndex(null), 1500);
+        return () => clearTimeout(timer);
+    }, [messages]);
 
     // --- CLEAN TEXT ---
     const cleanText = useCallback((text: string) => {
@@ -168,7 +192,7 @@ export const Chatbot: React.FC = () => {
         setIsRecording(false);
     }, []);
 
-    // ✅ START RECORDING — mic icon, live transcript in input, 2.5s silence auto-send
+    // ✅ START RECORDING
     const startRecording = useCallback(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -184,16 +208,14 @@ export const Chatbot: React.FC = () => {
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
 
-        // Ngôn ngữ nhận dạng theo lang hiện tại
         recognition.lang = langRef.current === 'ru' ? 'ru-RU' : 'en-US';
         recognition.continuous = true;
-        recognition.interimResults = true; // ✅ Hiện text realtime khi đang nói
+        recognition.interimResults = true;
 
         finalTranscriptRef.current = '';
         setIsRecording(true);
         setInputValue('');
 
-        // ✅ Xử lý kết quả realtime — hiện vào input box
         recognition.onresult = (event: any) => {
             let interimTranscript = '';
             let finalTranscript = finalTranscriptRef.current;
@@ -208,11 +230,8 @@ export const Chatbot: React.FC = () => {
             }
 
             finalTranscriptRef.current = finalTranscript;
-
-            // ✅ Hiện text đang nói vào input box
             setInputValue((finalTranscript + interimTranscript).trim());
 
-            // ✅ Reset silence timer — 2.5 giây sau khi ngừng nói thì tự gửi
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = setTimeout(() => {
                 const textToSend = finalTranscriptRef.current.trim() || interimTranscript.trim();
@@ -299,9 +318,7 @@ export const Chatbot: React.FC = () => {
 
     // Cleanup khi unmount
     useEffect(() => {
-        return () => {
-            stopRecording();
-        };
+        return () => { stopRecording(); };
     }, [stopRecording]);
 
     return (
@@ -314,9 +331,21 @@ export const Chatbot: React.FC = () => {
                 .no-scrollbar::-webkit-scrollbar { display: none; }
                 @keyframes micPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
                 .mic-recording { animation: micPulse 1.2s ease-in-out infinite; }
+                @keyframes msgHighlight {
+                    0%   { transform: scale(1.03); box-shadow: 0 0 0 3px rgba(30,90,160,0.35); }
+                    60%  { transform: scale(1.01); box-shadow: 0 0 0 6px rgba(30,90,160,0.15); }
+                    100% { transform: scale(1);    box-shadow: 0 0 0 0px rgba(30,90,160,0); }
+                }
+                .msg-highlight { animation: msgHighlight 1.5s ease-out forwards; }
+                @keyframes msgHighlightBot {
+                    0%   { transform: scale(1.03); box-shadow: 0 0 0 3px rgba(100,200,100,0.4); }
+                    60%  { transform: scale(1.01); box-shadow: 0 0 0 6px rgba(100,200,100,0.15); }
+                    100% { transform: scale(1);    box-shadow: 0 0 0 0px rgba(100,200,100,0); }
+                }
+                .msg-highlight-bot { animation: msgHighlightBot 1.5s ease-out forwards; }
             `}</style>
 
-            {/* Floating button */}
+            {/* ✅ Floating button với label mới */}
             <button
                 onClick={() => {
                     setIsOpen(!isOpen);
@@ -343,7 +372,7 @@ export const Chatbot: React.FC = () => {
                     <button onClick={() => setIsOpen(false)} className="absolute top-3 right-5 text-xl text-slate-400">×</button>
                 </div>
 
-                {/* Messages */}
+                {/* ✅ Messages với auto scroll + highlight */}
                 <div ref={chatBodyRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-white no-scrollbar">
                     {messages.length === 0 ? (
                         <div className="flex justify-start">
@@ -354,13 +383,29 @@ export const Chatbot: React.FC = () => {
                     ) : (
                         messages.map((msg, index) => (
                             <div key={index} className={`flex ${!msg.isBot ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${!msg.isBot ? 'bg-[#1e5aa0] text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
+                                <div className={`
+                                    max-w-[85%] px-4 py-2 rounded-2xl text-sm transition-all
+                                    ${!msg.isBot
+                                        ? 'bg-[#1e5aa0] text-white rounded-br-none'
+                                        : 'bg-slate-100 text-slate-700 rounded-bl-none'
+                                    }
+                                    ${highlightedIndex === index
+                                        ? (!msg.isBot ? 'msg-highlight' : 'msg-highlight-bot')
+                                        : ''
+                                    }
+                                `}>
                                     {msg.text}
                                 </div>
                             </div>
                         ))
                     )}
-                    {isLoadingAI && <div className="flex justify-start ml-4"><div className="dot-flashing"></div></div>}
+                    {isLoadingAI && (
+                        <div className="flex justify-start ml-4">
+                            <div className="dot-flashing"></div>
+                        </div>
+                    )}
+                    {/* ✅ Anchor để scroll xuống cuối */}
+                    <div ref={messagesEndRef} />
                 </div>
 
                 {/* Input area */}
@@ -385,7 +430,7 @@ export const Chatbot: React.FC = () => {
                             readOnly={isRecording}
                         />
 
-                        {/* ✅ Mic button */}
+                        {/* Mic button */}
                         <button
                             onClick={handleMicClick}
                             disabled={isLoadingAI}
@@ -397,12 +442,10 @@ export const Chatbot: React.FC = () => {
                             }`}
                         >
                             {isRecording ? (
-                                // Icon stop khi đang record
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                     <rect x="6" y="6" width="12" height="12" rx="2" />
                                 </svg>
                             ) : (
-                                // Icon mic khi không record
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 4v6a2 2 0 0 0 4 0V5a2 2 0 0 0-4 0z"/>
                                     <path d="M19 10a1 1 0 0 1 1 1 8 8 0 0 1-16 0 1 1 0 1 1 2 0 6 6 0 0 0 12 0 1 1 0 0 1 1-1z"/>
@@ -412,10 +455,10 @@ export const Chatbot: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* ✅ Indicator đang ghi âm */}
+                    {/* ✅ Recording indicator — theo ngôn ngữ user chọn */}
                     {isRecording && (
                         <p className="text-[10px] text-red-500 font-bold text-center animate-pulse">
-                            🔴 {translations[currentLang].listening} — tự gửi sau 2.5s im lặng
+                            🔴 {translations[currentLang].recordingHint}
                         </p>
                     )}
                 </div>
