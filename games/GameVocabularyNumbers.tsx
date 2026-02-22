@@ -445,11 +445,11 @@ const gameHTML = `
     function selectOption(opt) {
         selectedOption = opt;
         document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
-        document.getElementById(\`opt-\${opt}\`).classList.add('selected');
+        document.getElementById(`opt-${opt}`).classList.add('selected');
     }
 
     function enterGame() {
-        numberData = rawNumberData[\`opt\${selectedOption}\`];
+        numberData = rawNumberData[`opt${selectedOption}`];
         
         if (selectedOption === 1) {
             levels = {
@@ -553,14 +553,14 @@ const gameHTML = `
         const isCompact = currentTargetsData.length >= 3;
         currentTargetsData.forEach(data => {
             const card = document.createElement('div');
-            card.className = \`target-card \${isCompact ? 'compact' : ''}\`;
-            card.id = \`target-\${data.num}\`;
-            card.innerHTML = \`
-                <span class="number-text">\${data.num}</span>
-                <div class="drop-zone" data-num="\${data.num}">
-                    <span class="text-[10px] font-black text-blue-300 uppercase">\${translations[selectedLang].drop}</span>
+            card.className = `target-card ${isCompact ? 'compact' : ''}`;
+            card.id = `target-${data.num}`;
+            card.innerHTML = `
+                <span class="number-text">${data.num}</span>
+                <div class="drop-zone" data-num="${data.num}">
+                    <span class="text-[10px] font-black text-blue-300 uppercase">${translations[selectedLang].drop}</span>
                 </div>
-            \`;
+            `;
             targetsContainer.appendChild(card);
         });
         spawnWordsForBatch();
@@ -574,7 +574,7 @@ const gameHTML = `
         currentTargetsData.forEach(data => {
             const el = document.createElement('div');
             el.className = "floating-word";
-            el.innerHTML = \`<div class="word-main">\${data.word}</div><div class="word-sub">\${data[selectedLang]}</div>\`;
+            el.innerHTML = `<div class="word-main">${data.word}</div><div class="word-sub">${data[selectedLang]}</div>`;
             playArea.appendChild(el);
             
             const rect = el.getBoundingClientRect();
@@ -605,7 +605,7 @@ const gameHTML = `
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             wordObj.x = clientX - startX;
             wordObj.y = clientY - startY;
-            el.style.transform = \`translate3d(\${wordObj.x}px, \${wordObj.y}px, 0)\`;
+            el.style.transform = `translate3d(${wordObj.x}px, ${wordObj.y}px, 0)`;
             
             const wordRect = el.getBoundingClientRect();
             document.querySelectorAll('.drop-zone').forEach(zone => {
@@ -658,8 +658,12 @@ const gameHTML = `
         score++;
         updateProgress();
         matchedInBatch.push(wordObj.data);
-        const card = document.getElementById(\`target-\${wordObj.num}\`);
+        const card = document.getElementById(`target-${wordObj.num}`);
         if(card) card.classList.add('completed');
+        
+        // THÊM DÒNG NÀY ĐỂ PHÁT ÂM THANH KHI DROP ĐÚNG
+        speak(wordObj.data.word);
+        
         wordObj.el.remove();
         activeWords = activeWords.filter(w => w !== wordObj);
         if (matchedInBatch.length === currentTargetsData.length) {
@@ -681,13 +685,13 @@ const gameHTML = `
         dataList.forEach(data => {
             const item = document.createElement('div');
             item.className = "flex items-center justify-between p-4 bg-blue-50 rounded-2xl";
-            item.innerHTML = \`
+            item.innerHTML = `
                 <div>
-                    <div class="text-3xl font-black text-blue-800">\${data.num}: \${data.word}</div>
-                    <div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">\${data[selectedLang]}</div>
+                    <div class="text-3xl font-black text-blue-800">${data.num}: ${data.word}</div>
+                    <div class="text-[10px] text-blue-400 uppercase font-bold tracking-widest">${data[selectedLang]}</div>
                 </div>
-                <div class="mic-btn" onclick="speak('\${data.word}')">🔊</div>
-            \`;
+                <div class="mic-btn" onclick="speak('${data.word}')">🔊</div>
+            `;
             congratsList.appendChild(item);
         });
         matchOverlay.style.display = 'flex';
@@ -739,7 +743,7 @@ const gameHTML = `
             modalBtn.innerText = t.stage;
         } else {
             modalTitle.innerText = t.congrats;
-            modalText.innerHTML = \`<span class='text-2xl block mt-2 text-blue-800 font-black'>\${t.mastered}</span>\`;
+            modalText.innerHTML = `<span class='text-2xl block mt-2 text-blue-800 font-black'>${t.mastered}</span>`;
             modalBtn.innerText = t.playAgain;
             confetti({ particleCount: 300, spread: 150, origin: { y: 0.5 } });
         }
@@ -753,7 +757,7 @@ const gameHTML = `
                 word.y += word.dy;
                 if (word.x <= 0 || word.x >= area.width - word.width) word.dx *= -1;
                 if (word.y <= 0 || word.y >= area.height - word.height) word.dy *= -1;
-                word.el.style.transform = \`translate3d(\${word.x}px, \${word.y}px, 0)\`;
+                word.el.style.transform = `translate3d(${word.x}px, ${word.y}px, 0)`;
             }
         });
         animationFrame = requestAnimationFrame(animate);
