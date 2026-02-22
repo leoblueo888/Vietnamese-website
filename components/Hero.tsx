@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Chatbot } from './Chatbot.tsx';
+import { Chatbot } from './Chatbot';
 import { Language, AuthMode } from '../App';
 import { translations } from '../translations';
 
@@ -32,12 +31,12 @@ export const Hero: React.FC<HeroProps> = ({ language, onOpenAuthModal }) => {
               <button 
                 onClick={() => onOpenAuthModal('signup')}
                 className="bg-[#1e5aa0] text-white px-10 py-4 rounded-full font-bold text-lg hover:bg-blue-800 transition-all active:scale-95 shadow-[0_15px_30px_-5px_rgba(30,90,160,0.4)]">
-                Sign Up
+                {t.signUp}
               </button>
               <button
                 onClick={() => onOpenAuthModal('signin')}
                 className="bg-white text-slate-700 border border-slate-200 px-10 py-4 rounded-full font-bold text-lg hover:bg-slate-50 transition-all active:scale-95">
-                Sign In
+                {t.signIn}
               </button>
             </div>
           </div>
