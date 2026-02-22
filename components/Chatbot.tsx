@@ -41,6 +41,7 @@ export const Chatbot: React.FC = () => {
         }
     };
 
+    // ✅ FIX: Luôn đồng bộ langRef ngay khi currentLang thay đổi
     useEffect(() => { 
         langRef.current = currentLang; 
     }, [currentLang]);
@@ -57,42 +58,37 @@ export const Chatbot: React.FC = () => {
         loadKnowledge();
     }, []);
 
-    // --- LẮNG NGHE SỰ KIỆN THAY ĐỔI NGÔN NGỮ TỪ HEADER ---
+    // --- ✅ FIX: LẮNG NGHE CustomEvent VỚI detail.lang TỪ HEADER ---
     useEffect(() => {
-        const handleLangChange = () => {
-            const newLang = (localStorage.getItem('app_lang') as 'en' | 'ru') || 'en';
+        const handleLangChange = (e: Event) => {
+            // ✅ Đọc lang trực tiếp từ event detail, không đọc localStorage
+            const newLang = (e as CustomEvent).detail?.lang as 'en' | 'ru';
             
-            // Chỉ cập nhật nếu ngôn ngữ thay đổi
-            if (newLang !== currentLang) {
-                console.log("🔄 Chatbot: Ngôn ngữ thay đổi thành", newLang);
-                setCurrentLang(newLang);
-                
-                // Reset messages với lời chào bằng ngôn ngữ mới
-                setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
-                
-                // Nếu chat đang mở, đọc lời chào bằng ngôn ngữ mới
-                if (isOpen) {
-                    setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
-                }
+            if (!newLang || newLang === langRef.current) return;
+
+            console.log("🔄 Chatbot: Ngôn ngữ thay đổi thành", newLang);
+
+            // ✅ Update ref NGAY LẬP TỨC trước khi setState để TTS dùng đúng lang
+            langRef.current = newLang;
+            setCurrentLang(newLang);
+            
+            // Reset messages với lời chào bằng ngôn ngữ mới
+            setMessages([{ text: translations[newLang].initialMessage, isBot: true }]);
+            
+            // Nếu chat đang mở, đọc lời chào bằng ngôn ngữ mới
+            if (isOpen) {
+                setTimeout(() => speakStandard(translations[newLang].initialMessage), 500);
             }
         };
 
-        // Lắng nghe sự kiện 'languageChanged' từ Header
+        // ✅ Lắng nghe CustomEvent 'languageChanged' từ Header
         window.addEventListener('languageChanged', handleLangChange);
-        
-        // Cũng kiểm tra định kỳ (dự phòng)
-        const interval = setInterval(() => {
-            const storedLang = localStorage.getItem('app_lang') as 'en' | 'ru' || 'en';
-            if (storedLang !== currentLang) {
-                handleLangChange();
-            }
-        }, 1000);
         
         return () => { 
             window.removeEventListener('languageChanged', handleLangChange); 
-            clearInterval(interval); 
         };
-    }, [currentLang, isOpen]); // Thêm isOpen vào dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
     // --- CLEAN TEXT FUNCTION ---
     const cleanText = useCallback((text: string) => {
@@ -133,10 +129,8 @@ export const Chatbot: React.FC = () => {
             return;
         }
 
-        // Xác định ngôn ngữ cho giọng đọc
-        const currentLangValue = langRef.current;
-        // Bot nói bằng ngôn ngữ được chọn
-        const langCode = currentLangValue === 'ru' ? 'ru' : 'en';
+        // ✅ Đọc từ langRef.current (luôn mới nhất) thay vì closure cũ
+        const langCode = langRef.current === 'ru' ? 'ru' : 'en';
         
         // Dùng proxy API
         const url = `/api/tts?text=${encodeURIComponent(text)}&lang=${langCode}`;
@@ -190,7 +184,7 @@ export const Chatbot: React.FC = () => {
         setIsLoadingAI(true);
 
         try {
-            // Xác định ngôn ngữ cho AI response
+            // ✅ Đọc từ langRef.current để luôn lấy ngôn ngữ mới nhất
             const targetLang = langRef.current === 'ru' ? 'Russian' : 'English';
             
             const payload = {
